@@ -58,6 +58,16 @@ def _require_empty_or_overwrite(path: Path, overwrite: bool) -> None:
         raise FileExistsError(f"Output directory already exists and is non-empty: {path}. Use --overwrite to proceed.")
 
 
+def _pinhole_camera_params(scene_dir: Path) -> str:
+    camera_data = load_json(scene_dir / "intrinsics" / "camera.json")
+    k_like = camera_data["K_like"]
+    fx = float(k_like[0][0])
+    fy = float(k_like[1][1])
+    cx = float(k_like[0][2])
+    cy = float(k_like[1][2])
+    return f"{fx},{fy},{cx},{cy}"
+
+
 def _print_dry_run_summary(
     *,
     command: str,
@@ -185,7 +195,12 @@ def build_parser(command: str) -> argparse.ArgumentParser:
     parser.add_argument("--repo-root", type=Path, default=None, help="Optional 00_Baselines repo root.")
     parser.add_argument("--thesis-root", type=Path, default=None, help="Optional explicit Thesis root.")
     if command in {"prepare", "run"}:
-        parser.add_argument("--source", choices=("rosbag", "video"), default="rosbag", help="Raw input source type.")
+        parser.add_argument(
+            "--source",
+            choices=("rosbag", "rosbag-sfm", "video"),
+            default="rosbag",
+            help="Raw input source type.",
+        )
         parser.add_argument("--video-path", type=Path, default=None, help="Required for video unless it can be inferred.")
         parser.add_argument("--overwrite", action="store_true", help="Allow prepare to reuse an existing non-empty output directory.")
     if command == "prepare":
@@ -311,7 +326,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             "preset": args.preset,
             "overwrite": args.overwrite,
         }
-    else:
+    elif args.source == "video":
         video_path = layout.resolve_video_path(args.scene, args.video_path)
         output_dir = layout.colmap_scene_dir(args.scene)
         backend_argv = [
@@ -343,6 +358,85 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         )
         outputs = {"scene_dir": output_dir}
         backend_args = {"source": "video", "video_path": video_path, "preset": args.preset, "overwrite": args.overwrite}
+    else:
+        output_dir = layout.sfm_colmap_scene_dir(args.scene)
+        staging_dir = layout.validation_task_dir(args.scene, "rosbag_sfm")
+        raw_scene_dir = staging_dir / "raw_fishpoly_scene"
+        rectified_scene_dir = staging_dir / "pinhole_rectified_scene"
+        extract_argv = [
+            "--bag-dir",
+            str(layout.bag_dir(args.scene)),
+            "--output-dir",
+            str(raw_scene_dir),
+            "--calibration",
+            str(layout.calibration_file()),
+            "--overwrite",
+        ]
+        if preset.limit_images is not None:
+            extract_argv.extend(["--limit-images", str(preset.limit_images)])
+        rectify_argv = [
+            "--scene-dir",
+            str(raw_scene_dir),
+            "--output-dir",
+            str(rectified_scene_dir),
+            "--overwrite",
+        ]
+        colmap_argv = [
+            "--image-dir",
+            str(rectified_scene_dir / "images"),
+            "--output-dir",
+            str(output_dir),
+            "--camera-model",
+            "PINHOLE",
+            "--matcher",
+            "sequential",
+        ]
+        if args.overwrite:
+            colmap_argv.append("--overwrite")
+        if dry_run:
+            _print_dry_run_summary(
+                command="prepare",
+                scene=args.scene,
+                preset_name=args.preset,
+                inputs={"bag_dir": layout.bag_dir(args.scene), "calibration": layout.calibration_file()},
+                outputs={
+                    "staging_raw_scene": raw_scene_dir,
+                    "staging_rectified_scene": rectified_scene_dir,
+                    "scene_dir": output_dir,
+                },
+                preset_args={
+                    "source": "rosbag-sfm",
+                    "limit_images": preset.limit_images,
+                    "output_scene_name": output_dir.name,
+                    "uses_odometry": False,
+                    "uses_lidar": False,
+                },
+                backend_argv=[*extract_argv, "&&", *rectify_argv, "&&", *colmap_argv, "--camera-params", "<from_rectified_intrinsics>"],
+                passthrough=args.passthrough,
+            )
+            return 0
+        _require_empty_or_overwrite(output_dir, args.overwrite)
+        _invoke_module("data_preparation.rosbag_to_colmap.extract_rosbag_images", extract_argv)
+        _invoke_module("data_preparation.rectification.fishpoly_to_pinhole", rectify_argv)
+        colmap_argv.extend(["--camera-params", _pinhole_camera_params(rectified_scene_dir)])
+        _invoke_module(
+            "data_preparation.video2colmap.preprocess_video_to_colmap",
+            _append_passthrough(colmap_argv, args.passthrough),
+        )
+        outputs = {
+            "scene_dir": output_dir,
+            "staging_raw_scene": raw_scene_dir,
+            "staging_rectified_scene": rectified_scene_dir,
+        }
+        backend_args = {
+            "source": "rosbag-sfm",
+            "bag_dir": layout.bag_dir(args.scene),
+            "calibration": layout.calibration_file(),
+            "preset": args.preset,
+            "overwrite": args.overwrite,
+            "uses_odometry": False,
+            "uses_lidar": False,
+        }
     report = write_workflow_report(
         layout=layout,
         scene=args.scene,

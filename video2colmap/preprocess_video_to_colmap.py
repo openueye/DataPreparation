@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert an object-centric video into a COLMAP dataset usable by this repo."""
+"""Convert a video or prepared image directory into a COLMAP dataset usable by this repo."""
 
 from __future__ import annotations
 
@@ -30,11 +30,15 @@ def require_cv2():
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Extract frames from a video, run COLMAP, undistort the reconstruction, "
+            "Extract frames from a video or use a prepared image directory, run COLMAP, undistort the reconstruction, "
             "and produce a dataset layout compatible with this 3DGS repository."
         )
     )
-    parser.add_argument("--video-path", required=True, help="Input video path.")
+    parser.add_argument("--video-path", help="Input video path.")
+    parser.add_argument(
+        "--image-dir",
+        help="Prepared input image directory. When set, video extraction is skipped.",
+    )
     parser.add_argument(
         "--output-dir",
         required=True,
@@ -433,33 +437,48 @@ def prepare_output_dir(output_dir: Path, overwrite: bool) -> None:
 def main() -> int:
     args = parse_args()
 
-    video_path = Path(args.video_path).expanduser().resolve()
+    if bool(args.video_path) == bool(args.image_dir):
+        raise ValueError("Pass exactly one of --video-path or --image-dir.")
+
+    video_path = Path(args.video_path).expanduser().resolve() if args.video_path else None
+    input_image_dir = Path(args.image_dir).expanduser().resolve() if args.image_dir else None
     output_dir = Path(args.output_dir).expanduser().resolve()
-    if not video_path.exists():
+    if video_path is not None and not video_path.exists():
         raise FileNotFoundError(f"Video does not exist: {video_path}")
+    if input_image_dir is not None and not input_image_dir.exists():
+        raise FileNotFoundError(f"Image directory does not exist: {input_image_dir}")
+    if input_image_dir is not None and not input_image_dir.is_dir():
+        raise NotADirectoryError(f"Image input is not a directory: {input_image_dir}")
 
     colmap_path = ensure_binary(args.colmap_path)
     prepare_output_dir(output_dir, overwrite=args.overwrite)
 
     cache_dir = output_dir / ".cache_preprocess"
-    raw_image_dir = cache_dir / "raw_images"
+    raw_image_dir = input_image_dir if input_image_dir is not None else cache_dir / "raw_images"
     database_path = cache_dir / "database.db"
     raw_sparse_dir = cache_dir / "raw_sparse"
 
-    raw_image_dir.mkdir(parents=True, exist_ok=True)
+    if input_image_dir is None:
+        raw_image_dir.mkdir(parents=True, exist_ok=True)
     raw_sparse_dir.mkdir(parents=True, exist_ok=True)
 
-    extract_frames(
-        video_path=video_path,
-        image_dir=raw_image_dir,
-        image_format=args.image_format,
-        jpg_quality=args.jpg_quality,
-        sample_fps=args.sample_fps,
-        every_nth_frame=args.every_nth_frame,
-        max_frames=args.max_frames,
-        max_image_size=args.max_image_size,
-        min_sharpness=args.min_sharpness,
-    )
+    if video_path is not None:
+        extract_frames(
+            video_path=video_path,
+            image_dir=raw_image_dir,
+            image_format=args.image_format,
+            jpg_quality=args.jpg_quality,
+            sample_fps=args.sample_fps,
+            every_nth_frame=args.every_nth_frame,
+            max_frames=args.max_frames,
+            max_image_size=args.max_image_size,
+            min_sharpness=args.min_sharpness,
+        )
+    else:
+        image_count = len([path for path in raw_image_dir.iterdir() if path.suffix.lower() in {".jpg", ".jpeg", ".png"}])
+        if image_count < 8:
+            raise RuntimeError(f"Only {image_count} images found in {raw_image_dir}. COLMAP usually needs more views.")
+        print(f"[INFO] using {image_count} prepared images from {raw_image_dir}")
 
     colmap_feature_extractor(
         colmap_path=colmap_path,

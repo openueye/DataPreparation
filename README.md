@@ -15,6 +15,7 @@ data_preparation/
   __main__.py               # module entrypoint
   workflows.py              # scene-centric orchestration wrappers
   shared/                   # common calibration, camera, pose, point cloud, timing, I/O helpers
+  rosbag_to_colmap/         # ROS2 bag image-only extraction for pure visual COLMAP SfM
   rosbag_to_3dgs/           # ROS2 bag inspection, conversion, and raw projection validation
   slam_to_colmap/           # processed SLAM/LiDAR scene -> COLMAP text layout
   video2colmap/             # raw video -> COLMAP scene preprocessing
@@ -70,6 +71,11 @@ python -m data_preparation prepare \
   --source rosbag \
   --preset smoke
 
+python -m data_preparation prepare \
+  --scene Ferrari1 \
+  --source rosbag-sfm \
+  --preset full
+
 python -m data_preparation validate \
   --scene Ferrari1 \
   --preset smoke
@@ -94,6 +100,7 @@ The wrapper layer infers canonical paths from the Thesis layout:
 03_Datasets/001_rosbags/<scene>
 04_ProcessedData/011_scenes_lidar/<scene>
 04_ProcessedData/010_scenes_colmap/<scene>_slam_compat
+04_ProcessedData/010_scenes_colmap/<scene>_SFM
 05_Outputs/030_validation/<scene>/
 ```
 
@@ -103,8 +110,8 @@ Presets:
 - `full`: full scene preparation and validation defaults.
 - `debug`: heavier diagnostics while still using the same backend tools.
 
-For ROS bag preparation, `smoke` and `full` intentionally write different
-scene directories:
+For ROS bag SLAM/LiDAR preparation, `smoke` and `full` intentionally write
+different scene directories:
 
 ```text
 04_ProcessedData/011_scenes_lidar/<scene>_smoke  # smoke prepare output
@@ -113,6 +120,19 @@ scene directories:
 
 Use the `_smoke` scene only for quick validation and disposable experiments.
 Use the canonical `<scene>` directory for normal training runs.
+
+For pure visual ablation baselines, use `--source rosbag-sfm`. That workflow
+extracts only the ROS bag camera stream, rectifies FishPoly images to an
+undistorted `PINHOLE` camera, runs COLMAP SfM, and writes the training-ready
+scene under:
+
+```text
+04_ProcessedData/010_scenes_colmap/<scene>_SFM
+```
+
+The staging extraction and rectification scenes are written under
+`05_Outputs/030_validation/<scene>/rosbag_sfm/`. They are not training inputs.
+This path intentionally does not use SLAM odometry or LiDAR points.
 
 `prepare` is conservative by default:
 
@@ -156,6 +176,7 @@ The original tool commands remain supported and keep their existing parameters:
 
 ```bash
 python -m data_preparation rosbag-inspect --help
+python -m data_preparation rosbag-extract-images --help
 python -m data_preparation rosbag-convert --help
 python -m data_preparation rosbag-validate-projection --help
 python -m data_preparation slam-to-colmap --help
@@ -209,8 +230,13 @@ owned by this package. Training-time reports and checkpoints belong under
   - converts synchronized RGB/odometry/LiDAR messages into a 3DGS-ready scene
   - validates raw bag LiDAR-to-image projection with calibration overlays
 
+- `rosbag_to_colmap/`
+  - extracts only compressed image frames from ROS2 bags
+  - writes FishPoly camera metadata from `cam_in_ex.txt`
+  - intentionally excludes odometry, LiDAR, SLAM poses, and LiDAR point maps
+
 - `video2colmap/`
-  - extracts frames from video
+  - extracts frames from video or consumes a prepared image directory
   - runs COLMAP feature extraction, matching, mapping, and undistortion
   - writes a COLMAP-style `images/` and `sparse/0/` dataset
 

@@ -92,6 +92,9 @@ class DataPrepLayout:
     def colmap_compat_scene_dir(self, scene: str, suffix: str = "slam_compat") -> Path:
         return self.colmap_scenes_root / f"{scene}_{suffix}"
 
+    def sfm_colmap_scene_dir(self, scene: str) -> Path:
+        return self.colmap_scenes_root / f"{scene}_SFM"
+
     def validation_scene_dir(self, scene: str) -> Path:
         return self.validation_root / scene
 

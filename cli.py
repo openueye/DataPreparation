@@ -24,6 +24,10 @@ LEGACY_COMMANDS: Dict[str, Command] = {
         "data_preparation.rosbag_to_3dgs.convert_rosbag_to_3dgs",
         "Convert one ROS2 bag into a 3DGS-ready LiDAR/RGB scene.",
     ),
+    "rosbag-extract-images": Command(
+        "data_preparation.rosbag_to_colmap.extract_rosbag_images",
+        "Extract image-only ROS2 bag frames for a pure visual COLMAP SfM baseline.",
+    ),
     "rosbag-validate-projection": Command(
         "data_preparation.rosbag_to_3dgs.validate_extrinsic_projection",
         "Validate raw bag LiDAR-to-image projection with extrinsic overlays.",
