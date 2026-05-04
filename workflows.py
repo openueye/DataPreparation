@@ -197,26 +197,14 @@ def build_parser(command: str) -> argparse.ArgumentParser:
     if command in {"prepare", "run"}:
         parser.add_argument(
             "--source",
-            choices=("rosbag", "rosbag-sfm", "video"),
-            default="rosbag",
+            choices=("rosbag-sfm", "video"),
+            default="rosbag-sfm",
             help="Raw input source type.",
         )
         parser.add_argument("--video-path", type=Path, default=None, help="Required for video unless it can be inferred.")
         parser.add_argument("--overwrite", action="store_true", help="Allow prepare to reuse an existing non-empty output directory.")
     if command == "prepare":
         parser.add_argument("--dry-run", action="store_true", help="Print inferred inputs, outputs, and backend args without running backend.")
-    if command == "export":
-        parser.add_argument(
-            "--format",
-            choices=("colmap-compatible",),
-            default="colmap-compatible",
-            help="Export format.",
-        )
-        parser.add_argument(
-            "--rectified",
-            action="store_true",
-            help="Export the scene's FishPoly-to-pinhole rectified variant.",
-        )
     if command == "run":
         parser.add_argument("--with-inspect", action="store_true", help="Run inspect before prepare.")
     if command not in {"inspect", "run"}:
@@ -450,147 +438,17 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_validate(args: argparse.Namespace) -> int:
-    layout = _layout_from_args(args)
-    preset = get_preset(args.preset)
-    output_dir = layout.validation_task_dir(args.scene, "projection")
-    scene_dir = layout.lidar_scene_dir_for_preset(args.scene, args.preset)
-    backend_argv = [
-        "--scene-dir",
-        str(scene_dir),
-        "--output-dir",
-        str(output_dir),
-        "--report-path",
-        str(output_dir / "report.json"),
-        "--max-overlay-points",
-        str(preset.max_overlay_points),
-    ]
-    if preset.projection_frames:
-        backend_argv.append("--frames")
-        backend_argv.extend(preset.projection_frames)
-    _invoke_module(
-        "data_preparation.data_quality.projection_overlay",
-        _append_passthrough(backend_argv, args.passthrough),
-    )
-    report = write_workflow_report(
-        layout=layout,
-        scene=args.scene,
-        task="projection",
-        command="validate",
-        preset=args.preset,
-        outputs={"output_dir": output_dir, "report": output_dir / "report.json"},
-        backend_args={"scene_dir": scene_dir, "preset": args.preset},
-    )
-    print(f"[INFO] validate report={report}")
-    return 0
-
-
-def cmd_colorize(args: argparse.Namespace) -> int:
-    layout = _layout_from_args(args)
-    preset = get_preset(args.preset)
-    preset_scene_dir = layout.lidar_scene_dir_for_preset(args.scene, args.preset)
-    scene_dir = preset_scene_dir if preset_scene_dir.exists() else layout.lidar_scene_dir(args.scene)
-    output_dir = layout.validation_task_dir(args.scene, "colorize")
-    output_ply = scene_dir / "lidar" / "global_map_colorized.ply"
-    if args.preset == "smoke":
-        output_ply = output_dir / "global_map_colorized_preview.ply"
-    report_path = output_dir / "report.json"
-
-    backend_argv = [
-        "--scene-dir",
-        str(scene_dir),
-        "--output-ply",
-        str(output_ply),
-        "--report-path",
-        str(report_path),
-    ]
-    if preset.projection_frames:
-        backend_argv.append("--frames")
-        backend_argv.extend(preset.projection_frames)
-    if preset.colorize_sample_points > 0:
-        backend_argv.extend(["--sample-points", str(preset.colorize_sample_points)])
-    _invoke_module(
-        "data_preparation.data_quality.colorize_lidar_map",
-        _append_passthrough(backend_argv, args.passthrough),
-    )
-    report = write_workflow_report(
-        layout=layout,
-        scene=args.scene,
-        task="colorize",
-        command="colorize",
-        preset=args.preset,
-        outputs={"output_dir": output_dir, "output_ply": output_ply, "report": report_path},
-        backend_args={
-            "scene_dir": scene_dir,
-            "sample_points": preset.colorize_sample_points,
-            "frames": ",".join(preset.projection_frames or []),
-            "preset": args.preset,
-        },
-    )
-    print(f"[INFO] colorize report={report}")
-    return 0
-
-
-def cmd_export(args: argparse.Namespace) -> int:
-    layout = _layout_from_args(args)
-    preset = get_preset(args.preset)
-    rectified_scene_dir = layout.rectified_lidar_scene_dir(args.scene)
-    use_rectified = bool(args.rectified or rectified_scene_dir.exists())
-    output_dir = layout.colmap_compat_scene_dir(
-        args.scene,
-        suffix="pinhole_rectified_slam_compat" if use_rectified else "slam_compat",
-    )
-    scene_dir = rectified_scene_dir if use_rectified else layout.lidar_scene_dir_for_preset(args.scene, args.preset)
-    colorized = scene_dir / "lidar" / "global_map_colorized.ply"
-    points_ply = colorized if colorized.exists() else scene_dir / "lidar" / "global_map.ply"
-    backend_argv = [
-        "--scene-dir",
-        str(scene_dir),
-        "--output-dir",
-        str(output_dir),
-        "--points-ply",
-        str(points_ply),
-        "--max-points",
-        str(preset.export_max_points),
-    ]
-    _invoke_module(
-        "data_preparation.slam_to_colmap.main",
-        _append_passthrough(backend_argv, args.passthrough),
-    )
-    report = write_workflow_report(
-        layout=layout,
-        scene=args.scene,
-        task="export_colmap",
-        command="export",
-        preset=args.preset,
-        outputs={"scene_dir": output_dir, "backend_report": output_dir / "slam_to_colmap_report.json"},
-        backend_args={
-            "format": args.format,
-            "points_ply": points_ply,
-            "preset": args.preset,
-            "source_scene_dir": scene_dir,
-            "rectified": use_rectified,
-        },
-    )
-    print(f"[INFO] export report={report}")
-    return 0
-
-
 def cmd_run(args: argparse.Namespace) -> int:
     args.passthrough = []
     if args.with_inspect:
         cmd_inspect(args)
     cmd_prepare(args)
-    cmd_validate(args)
     return 0
 
 
 WORKFLOWS: Dict[str, Callable[[argparse.Namespace], int]] = {
     "inspect": cmd_inspect,
     "prepare": cmd_prepare,
-    "validate": cmd_validate,
-    "colorize": cmd_colorize,
-    "export": cmd_export,
     "run": cmd_run,
 }
 

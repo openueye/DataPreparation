@@ -20,21 +20,13 @@ LEGACY_COMMANDS: Dict[str, Command] = {
         "data_preparation.rosbag_to_3dgs.inspect_rosbags_for_3dgs",
         "Inspect ROS2 bags and write inventory/feasibility reports.",
     ),
-    "rosbag-convert": Command(
-        "data_preparation.rosbag_to_3dgs.convert_rosbag_to_3dgs",
-        "Convert one ROS2 bag into a 3DGS-ready LiDAR/RGB scene.",
-    ),
     "rosbag-extract-images": Command(
         "data_preparation.rosbag_to_colmap.extract_rosbag_images",
         "Extract image-only ROS2 bag frames for a pure visual COLMAP SfM baseline.",
     ),
-    "rosbag-validate-projection": Command(
-        "data_preparation.rosbag_to_3dgs.validate_extrinsic_projection",
-        "Validate raw bag LiDAR-to-image projection with extrinsic overlays.",
-    ),
-    "slam-to-colmap": Command(
-        "data_preparation.slam_to_colmap.main",
-        "Convert an exported SLAM/LiDAR scene to COLMAP text layout.",
+    "hybrid-sfm-lidar": Command(
+        "data_preparation.slam_to_colmap.filtered_scene_main",
+        "Build a COLMAP-camera scene with transformed SLAM/LiDAR seed points.",
     ),
     "rectify-fishpoly": Command(
         "data_preparation.rectification.fishpoly_to_pinhole",
@@ -44,24 +36,13 @@ LEGACY_COMMANDS: Dict[str, Command] = {
         "data_preparation.video2colmap.preprocess_video_to_colmap",
         "Extract video frames and run a COLMAP preprocessing pipeline.",
     ),
-    "projection-check": Command(
-        "data_preparation.data_quality.projection_overlay",
-        "Check processed scene LiDAR/RGB projection quality.",
-    ),
-    "colorize-lidar": Command(
-        "data_preparation.data_quality.colorize_lidar_map",
-        "Colorize a global LiDAR map using synchronized RGB images.",
-    ),
 }
 
 
 WORKFLOW_HELP: Dict[str, str] = {
     "inspect": "Inspect raw inputs for a scene and write standardized reports.",
     "prepare": "Prepare a training-ready scene from rosbag or video inputs.",
-    "validate": "Validate a prepared scene and write projection diagnostics.",
-    "colorize": "Colorize a LiDAR map using synchronized RGB images.",
-    "export": "Export derived scene formats such as COLMAP-compatible layout.",
-    "run": "Run the default prepare + validate workflow for a scene.",
+    "run": "Run the default prepare workflow for a scene.",
 }
 
 COMMANDS: Dict[str, Command] = LEGACY_COMMANDS
@@ -81,7 +62,7 @@ def main(argv: List[str] | None = None) -> int:
     args = parse_args(argv)
     if args.command is None:
         print("Workflow commands:")
-        for name in ("inspect", "prepare", "validate", "colorize", "export", "run"):
+        for name in ("inspect", "prepare", "run"):
             print(f"  {name:<28} {WORKFLOW_HELP[name]}")
         print("\nLegacy commands:")
         for name in sorted(LEGACY_COMMANDS):

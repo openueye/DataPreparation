@@ -1,32 +1,25 @@
-# SLAM to COLMAP-compatible
+# Hybrid SfM-Camera / LiDAR-Seed Export
 
-This tool converts a processed `images + poses.csv + camera.json + lidar/*.ply`
-scene into a COLMAP-compatible text model:
+The supported LiDAR path builds a standard COLMAP-compatible scene for the
+trainer:
 
 ```text
-output/
-├── images -> source/images
-└── sparse/0/
-    ├── cameras.txt
-    ├── images.txt
-    └── points3D.txt
+cameras.bin, images.bin, images/ -> SfM/COLMAP scene
+points3D.txt                    -> SLAM/LiDAR points transformed into SfM coordinates
 ```
 
-For high-quality 3DGS training, the input images must already be rectified to
-an undistorted `PINHOLE` or `SIMPLE_PINHOLE` model. The converter now refuses to
-export non-pinhole camera models by default, because writing raw FishPoly images
-as COLMAP `PINHOLE` creates a geometric mismatch that usually appears as blurry
-renderings.
-
-Legacy smoke-test export is still available with:
+Use:
 
 ```bash
-python -m data_preparation slam-to-colmap \
-  --scene-dir /path/to/slam_scene \
-  --output-dir /path/to/colmap_compat_scene \
-  --allow-pinhole-approximation
+python -m data_preparation hybrid-sfm-lidar \
+  --scene-dir /path/to/filtered_slam_scene \
+  --sfm-scene-dir /path/to/SFM_colmap_scene \
+  --output-dir /path/to/hybrid_sfm_lidar_scene
 ```
 
-The output is intended for loader compatibility and smoke tests when this legacy
-flag is used. It is not a pure RGB-only COLMAP/SfM baseline because poses come
-from SLAM and sparse points come from LiDAR.
+The output is trained with `3DGS_baseline01 --data-format colmap`.
+
+The old `slam-to-colmap` export is disabled. That path wrote SLAM camera poses
+and LiDAR points into a COLMAP text layout (`*_slam_compat`), which is not a
+clean LiDAR-initialization ablation because camera-pose alignment and point
+initialization changed at the same time.

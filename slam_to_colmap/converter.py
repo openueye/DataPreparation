@@ -130,6 +130,12 @@ def convert_scene(
     copy_images: bool = False,
     allow_pinhole_approximation: bool = False,
 ) -> Dict[str, object]:
+    """Deprecated old SLAM-pose/LiDAR-points export.
+
+    This helper is kept only for historical reproducibility. New LiDAR-seed
+    experiments should use filtered_scene_main.py, which keeps SfM/COLMAP
+    cameras and transforms only the LiDAR seed points into that frame.
+    """
     scene_dir = scene_dir.expanduser().resolve()
     output_dir = output_dir.expanduser().resolve()
     images_dir = scene_dir / "images"
