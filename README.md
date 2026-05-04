@@ -29,18 +29,33 @@ Hybrid SfM-camera / LiDAR-seed scene:
 python -m data_preparation hybrid-sfm-lidar \
   --scene-dir /path/to/filtered_slam_scene \
   --sfm-scene-dir /path/to/SFM_colmap_scene \
-  --output-dir /path/to/hybrid_sfm_lidar_scene
+  --scene-name Downtown1_sparse322k
 ```
 
 Hybrid output is still a COLMAP-compatible scene. The trainer consumes it with
 `--data-format colmap`.
 
+Default hybrid outputs should live under:
+
+```text
+04_ProcessedData/010_scenes_colmap/hybrid_sfm_lidar/<scene_variant>
+```
+
+The active processed-data categories are:
+
+```text
+sfm               # pure SfM/COLMAP
+slam_compat       # deprecated SLAM camera + LiDAR points comparison
+hybrid_sfm_lidar  # SfM cameras + transformed LiDAR seed
+```
+
 ## Deprecated Route
 
 The old `slam-to-colmap` / `*_slam_compat` route is disabled. It used SLAM
 camera poses plus LiDAR points, so it did not isolate LiDAR initialization from
-camera-pose alignment. Historical outputs may remain archived for audit, but
-new experiments should use either pure SfM/COLMAP or `hybrid-sfm-lidar`.
+camera-pose alignment. The data can remain active as `slam_compat` for
+comparison, but new LiDAR initialization experiments should use
+`hybrid-sfm-lidar`.
 
 ## Useful Commands
 

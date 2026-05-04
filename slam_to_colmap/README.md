@@ -14,7 +14,13 @@ Use:
 python -m data_preparation hybrid-sfm-lidar \
   --scene-dir /path/to/filtered_slam_scene \
   --sfm-scene-dir /path/to/SFM_colmap_scene \
-  --output-dir /path/to/hybrid_sfm_lidar_scene
+  --scene-name Downtown1_sparse322k
+```
+
+When `--output-dir` is omitted, the output is written to:
+
+```text
+04_ProcessedData/010_scenes_colmap/hybrid_sfm_lidar/<scene-name>
 ```
 
 The output is trained with `3DGS_baseline01 --data-format colmap`.

@@ -32,7 +32,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--scene-dir", required=True, type=Path, help="Filtered scene root, e.g. Downtown1_filtered.")
     parser.add_argument("--sfm-scene-dir", required=True, type=Path, help="Reference COLMAP SfM scene root.")
-    parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--output-dir", type=Path, default=None)
+    parser.add_argument("--scene-name", default=None, help="Scene variant name used when --output-dir is omitted.")
+    parser.add_argument("--repo-root", type=Path, default=None, help="Optional 00_Baselines repo root for default output.")
+    parser.add_argument("--thesis-root", type=Path, default=None, help="Optional explicit Thesis root for default output.")
     parser.add_argument("--max-points", type=int, default=3_000_000, help="Maximum LiDAR points to export. Use 0 for all.")
     parser.add_argument("--copy-images", action="store_true", help="Copy images instead of symlinking to the SfM images.")
     parser.add_argument("--poses-csv", type=Path, default=None)
@@ -218,7 +221,18 @@ def copy_sfm_pose_model(sfm_sparse0: Path, output_sparse0: Path) -> None:
 def convert_filtered_scene(args: argparse.Namespace) -> Dict[str, object]:
     scene_dir = args.scene_dir.expanduser().resolve()
     sfm_scene_dir = args.sfm_scene_dir.expanduser().resolve()
-    output_dir = args.output_dir.expanduser().resolve()
+    if args.output_dir is None:
+        try:
+            from data_preparation.shared.layout import DataPrepLayout
+        except ModuleNotFoundError:
+            import sys
+
+            sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+            from data_preparation.shared.layout import DataPrepLayout
+        layout = DataPrepLayout.from_repo_root(repo_root=args.repo_root, thesis_root=args.thesis_root)
+        output_dir = layout.hybrid_colmap_scene_dir(args.scene_name or scene_dir.name).expanduser().resolve()
+    else:
+        output_dir = args.output_dir.expanduser().resolve()
     poses_csv = (args.poses_csv or scene_dir / "poses" / "camera_poses.csv").expanduser().resolve()
     slam_frames_dir = (args.slam_frames_dir or scene_dir / "lidar" / "slam_frames").expanduser().resolve()
     sfm_sparse0 = sfm_scene_dir / "sparse" / "0"

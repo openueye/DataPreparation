@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+COLMAP_CATEGORIES = {"sfm", "slam_compat", "hybrid_sfm_lidar"}
+
 
 def _abs(path: Path | str) -> Path:
     return Path(path).expanduser().resolve()
@@ -86,14 +88,19 @@ class DataPrepLayout:
             return self.lidar_scenes_root / f"{scene}_smoke"
         return self.lidar_scene_dir(scene)
 
-    def colmap_scene_dir(self, scene: str) -> Path:
-        return self.colmap_scenes_root / scene
+    def colmap_scene_dir(self, scene: str, category: str = "sfm") -> Path:
+        if category not in COLMAP_CATEGORIES:
+            raise ValueError(f"Unsupported COLMAP category: {category}")
+        return self.colmap_scenes_root / category / scene
 
     def colmap_compat_scene_dir(self, scene: str, suffix: str = "slam_compat") -> Path:
-        return self.colmap_scenes_root / f"{scene}_{suffix}"
+        return self.colmap_scene_dir(scene, category="slam_compat")
 
     def sfm_colmap_scene_dir(self, scene: str) -> Path:
-        return self.colmap_scenes_root / f"{scene}_SFM"
+        return self.colmap_scene_dir(scene, category="sfm")
+
+    def hybrid_colmap_scene_dir(self, scene_variant: str) -> Path:
+        return self.colmap_scene_dir(scene_variant, category="hybrid_sfm_lidar")
 
     def validation_scene_dir(self, scene: str) -> Path:
         return self.validation_root / scene
