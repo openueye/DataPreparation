@@ -31,10 +31,10 @@ python -m data_preparation slam
 These files are still used by the formal routes:
 
 ```text
-video2colmap/preprocess_video_to_colmap.py      # backend for routes/sfm.py
-slam_to_colmap/filtered_scene_main.py           # backend for routes/hybrid.py
-slam_to_colmap/main.py                          # backend for routes/slam.py
-slam_to_colmap/converter.py                     # SLAM conversion implementation
+video2colmap/preprocess_video_to_colmap.py      # backend for sfm/main.py
+hybrid/converter.py                             # backend for hybrid/main.py
+slam/export_colmap.py                           # backend for slam/main.py
+slam/converter.py                               # SLAM conversion implementation
 ```
 
 Shared modules used by the formal route scripts/backends:
@@ -83,8 +83,6 @@ rosbag_to_3dgs/ros2_cdr.py
 rosbag_to_3dgs/validate_extrinsic_projection.py
 rosbag_to_colmap/__init__.py
 rosbag_to_colmap/extract_rosbag_images.py
-rectification/__init__.py
-rectification/fishpoly_to_pinhole.py
 data_quality/__init__.py
 data_quality/colorize_lidar_map.py
 data_quality/projection_overlay.py
@@ -98,12 +96,8 @@ If these are deleted, also remove or adjust the hidden legacy commands in
 `cli.py`:
 
 ```text
-inspect
-prepare
-run
 rosbag-inspect
 rosbag-extract-images
-rectify-fishpoly
 ```
 
 ## Documentation candidates
@@ -113,7 +107,15 @@ settle:
 
 ```text
 video2colmap/README.md
-slam_to_colmap/README.md
+```
+
+## Already approved for deletion
+
+These were approved for removal after the route-specific migration:
+
+```text
+rectification/
+slam_to_colmap/
 ```
 
 ## Generated files / should not be tracked

@@ -4,12 +4,12 @@ import argparse
 from pathlib import Path
 
 try:
-    from data_preparation.slam_to_colmap.converter import convert_scene
+    from data_preparation.slam.converter import convert_scene
 except ModuleNotFoundError:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from data_preparation.slam_to_colmap.converter import convert_scene
+    from data_preparation.slam.converter import convert_scene
 
 
 def parse_args() -> argparse.Namespace:

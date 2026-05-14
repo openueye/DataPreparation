@@ -15,7 +15,7 @@ try:
     from data_preparation.shared.io import write_json
     from data_preparation.shared.pointcloud import read_ply_xyz_rgb
     from data_preparation.shared.poses import quaternion_xyzw_to_matrix
-    from data_preparation.slam_to_colmap.converter import link_or_copy_images
+    from data_preparation.slam.converter import link_or_copy_images
 except ModuleNotFoundError:
     import sys
 
@@ -24,7 +24,7 @@ except ModuleNotFoundError:
     from data_preparation.shared.io import write_json
     from data_preparation.shared.pointcloud import read_ply_xyz_rgb
     from data_preparation.shared.poses import quaternion_xyzw_to_matrix
-    from data_preparation.slam_to_colmap.converter import link_or_copy_images
+    from data_preparation.slam.converter import link_or_copy_images
 
 
 def parse_args() -> argparse.Namespace:

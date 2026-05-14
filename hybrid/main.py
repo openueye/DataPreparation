@@ -46,7 +46,7 @@ def run(argv: List[str]) -> int:
     if args.poses_csv is not None:
         backend_argv.extend(["--poses-csv", str(args.poses_csv.expanduser().resolve())])
     invoke_module(
-        "data_preparation.slam_to_colmap.filtered_scene_main",
+        "data_preparation.hybrid.converter",
         "hybrid",
         append_passthrough(backend_argv, args.passthrough),
     )
@@ -55,4 +55,3 @@ def run(argv: List[str]) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(run(sys.argv[1:]))
-

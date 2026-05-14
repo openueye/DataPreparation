@@ -27,8 +27,7 @@ Use the top-level command to see only these formal routes:
 python -m data_preparation
 ```
 
-Legacy/debug commands are still callable directly for reproducibility, but they
-are hidden from the default summary.
+Remaining legacy/debug commands are hidden from the default summary.
 
 ## SFM
 

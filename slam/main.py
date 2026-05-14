@@ -38,7 +38,7 @@ def run(argv: List[str]) -> int:
     if args.points_ply is not None:
         backend_argv.extend(["--points-ply", str(args.points_ply.expanduser().resolve())])
     invoke_module(
-        "data_preparation.slam_to_colmap.main",
+        "data_preparation.slam.export_colmap",
         "slam",
         append_passthrough(backend_argv, args.passthrough),
     )
@@ -47,4 +47,3 @@ def run(argv: List[str]) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(run(sys.argv[1:]))
-
