@@ -61,17 +61,10 @@ The exported `sparse/0/points3D.txt` and `sparse/0/points3D.ply` contain the sam
 conda run -n 3dgs_train python -m data_preparation slam \
   --scene Downtown1 \
   --rosbag-dir /home/haibo/Documents/Thesis/03_Datasets/001_rosbags/Downtown1 \
-  --output-dir /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_3M \
-  --max-points 3000000 \
+  --output-dir /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_1M \
+  --max-points 1000000 \
   -- --copy-images
 ```
-
-python -m data_preparation slam \
-  --scene Ferrari1 \
-  --rosbag-dir /home/haibo/Documents/Thesis/03_Datasets/001_rosbags/Ferrari1 \
-  --output-dir /home/haibo/Documents/Thesis/04_ProcessedData/slam/ferrari1_3M \
-  --max-points 3000000 \
-  -- --copy-images
 
 Use `--max-points 0` to disable point-cloud downsampling.
 

@@ -34,6 +34,10 @@ LEGACY_COMMANDS: Dict[str, Command] = {
 
 
 COMMANDS: Dict[str, Command] = LEGACY_COMMANDS
+DEPTH_PRIOR_COMMAND = Command(
+    "data_preparation.depth_prior.project",
+    "Project a dense point cloud into an existing COLMAP scene as metric depth priors.",
+)
 
 
 def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
@@ -58,7 +62,9 @@ def main(argv: List[str] | None = None) -> int:
             "  sfm          Organize a ROS bag and run COLMAP/SfM on rectified images.\n"
             "  hybrid       Organize a ROS bag, run SfM, and align SLAM/LiDAR points.\n"
             "  slam         Organize a ROS bag and convert SLAM poses/points to COLMAP text.\n"
-            "\nUse: python -m data_preparation <sfm|hybrid|slam> --help"
+            "  depth-prior-project\n"
+            "               Project dense LiDAR/global-map points to scene/depths/*.npy.\n"
+            "\nUse: python -m data_preparation <sfm|hybrid|slam|depth-prior-project> --help"
         )
         print("Remaining legacy/debug commands are hidden from this summary.")
         return 0
@@ -84,9 +90,13 @@ def main(argv: List[str] | None = None) -> int:
             print(f"[ERROR] {exc}", file=sys.stderr)
             return 2
 
+    if args.command == "depth-prior-project":
+        invoke_module(DEPTH_PRIOR_COMMAND.module, args.command, args.args)
+        return 0
+
     if args.command not in LEGACY_COMMANDS:
         print(f"[ERROR] Unknown command: {args.command}", file=sys.stderr)
-        print("Use: python -m data_preparation <sfm|hybrid|slam> --help", file=sys.stderr)
+        print("Use: python -m data_preparation <sfm|hybrid|slam|depth-prior-project> --help", file=sys.stderr)
         return 2
 
     command = LEGACY_COMMANDS[args.command]
