@@ -59,6 +59,12 @@ python -m data_preparation slam \
   -- --copy-images
 ```
 
+
+python -m data_preparation slam \
+  --scene Downtown1 \
+  --input-dir /path/to/Downtown1_pure_headerstamp_3M \
+  --max-points 3000000 \
+  -- --copy-images
 ## Training
 
 All three routes write COLMAP-compatible scenes. The trainer consumes them with:
