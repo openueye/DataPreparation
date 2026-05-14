@@ -27,34 +27,9 @@ Use the top-level command to see only these formal routes:
 python -m data_preparation
 ```
 
-Remaining legacy/debug commands are hidden from the default summary.
+## Usage
 
-## SFM
-
-Input:
-
-```text
-images_rectified/
-```
-
-Processing:
-
-```text
-Run COLMAP only on the rectified images.
-```
-
-Output:
-
-```text
-04_ProcessedData/sfm/<scene>/
-├── images/
-└── sparse/0/
-    ├── cameras.bin
-    ├── images.bin
-    └── points3D.bin
-```
-
-Example:
+### SFM
 
 ```bash
 python -m data_preparation sfm \
@@ -63,48 +38,7 @@ python -m data_preparation sfm \
   -- --camera-model PINHOLE --matcher sequential --sift-gpu
 ```
 
-Pass `--output-dir` to override the default `04_ProcessedData/sfm/<scene>`
-location.
-
-## Hybrid
-
-Input:
-
-```text
-SLAM/reference scene:
-  images_rectified/
-  poses/camera_poses.csv
-  lidar/global_map_slam_odom.ply
-
-SfM scene:
-  images/
-  sparse/0/cameras.bin
-  sparse/0/images.bin
-```
-
-Processing:
-
-```text
-Keep SfM cameras, images, and poses.
-Estimate a similarity transform from same-name SfM and SLAM camera centers.
-Transform the colored SLAM/LiDAR point cloud into the SfM coordinate frame.
-Voxel-downsample those points to the requested point budget.
-Write the same downsampled points as sparse/0/points3D.txt and sparse/0/points3D.ply.
-```
-
-Output:
-
-```text
-04_ProcessedData/hybrid_sfm_lidar/<scene>/
-├── images -> SfM images
-└── sparse/0/
-    ├── cameras.bin
-    ├── images.bin
-    ├── points3D.txt
-    └── points3D.ply
-```
-
-Example:
+### Hybrid
 
 ```bash
 python -m data_preparation hybrid \
@@ -115,44 +49,7 @@ python -m data_preparation hybrid \
   --max-points 3000000
 ```
 
-Pass `--output-dir` to override the default
-`04_ProcessedData/hybrid_sfm_lidar/<scene>` location.
-
-## SLAM
-
-Input:
-
-```text
-images_rectified/
-poses/camera_poses.csv              # uses T_odom_from_camera_*
-calib/camera_rectified.json
-associations/frame_associations.csv
-lidar/slam_frames_manifest.csv
-lidar/global_map_slam_odom.ply
-```
-
-Processing:
-
-```text
-Do not run SfM.
-Convert SLAM camera poses and the colored SLAM/LiDAR map into a COLMAP text model.
-Voxel-downsample the point cloud to the requested point budget.
-Write the same downsampled points as sparse/0/points3D.txt and sparse/0/points3D.ply.
-```
-
-Output:
-
-```text
-04_ProcessedData/slam_compat/<scene>/
-├── images/
-└── sparse/0/
-    ├── cameras.txt
-    ├── images.txt
-    ├── points3D.txt
-    └── points3D.ply
-```
-
-Example:
+### SLAM
 
 ```bash
 python -m data_preparation slam \
@@ -161,9 +58,6 @@ python -m data_preparation slam \
   --max-points 3000000 \
   -- --copy-images
 ```
-
-Pass `--output-dir` to override the default
-`04_ProcessedData/slam_compat/<scene>` location.
 
 ## Training
 

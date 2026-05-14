@@ -18,7 +18,7 @@ def run(argv: List[str]) -> int:
         description="Convert SLAM poses and a colored SLAM point cloud into a COLMAP text model.",
     )
     parser.add_argument("--input-dir", "--scene-dir", dest="input_dir", required=True, type=Path)
-    parser.add_argument("--scene", default=None, help="Scene name used for the default 04_ProcessedData/slam_compat output.")
+    parser.add_argument("--scene", default=None, help="Scene name used for the default 04_ProcessedData/slam output.")
     parser.add_argument("--output-dir", type=Path, default=None, help="Explicit COLMAP scene output directory.")
     parser.add_argument("--points-ply", type=Path, default=None, help="Override lidar/global_map_slam_odom.ply.")
     parser.add_argument("--max-points", type=int, default=3_000_000, help="Maximum point count after voxel downsampling. Use 0 for all.")
