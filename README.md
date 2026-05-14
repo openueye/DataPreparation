@@ -29,6 +29,8 @@ conda run -n 3dgs_train python -m data_preparation
 
 Run these commands from the `3dgs_train` conda environment. Runtime dependencies include `numpy`, `opencv-python`, `Pillow`, and `plyfile`.
 
+The organizer looks for `cam_in_ex.txt` in the scene bag directory first, then in the parent `001_rosbags/` directory.
+
 ## Usage
 
 ### SFM

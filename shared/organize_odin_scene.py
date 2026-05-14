@@ -136,6 +136,21 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def resolve_calibration_path(bag_dir: Path, explicit: Optional[Path]) -> Path:
+    if explicit:
+        return explicit.expanduser().resolve()
+    candidates = [
+        bag_dir / "cam_in_ex.txt",
+        bag_dir.parent / "cam_in_ex.txt",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+    raise FileNotFoundError(
+        "Could not find cam_in_ex.txt. Checked:\n" + "\n".join(str(path) for path in candidates)
+    )
+
+
 def align(offset: int, alignment: int) -> int:
     return BASE_OFFSET + (((offset - BASE_OFFSET) + (alignment - 1)) & ~(alignment - 1))
 
@@ -1415,11 +1430,7 @@ def main() -> None:
         if args.output_dir
         else thesis_root_from_here() / "04_ProcessedData" / "rosbag_prepared" / f"{args.scene}_pure_headerstamp"
     )
-    calibration_path = (
-        args.calibration.expanduser().resolve()
-        if args.calibration
-        else bag_dir / "cam_in_ex.txt"
-    )
+    calibration_path = resolve_calibration_path(bag_dir, args.calibration)
     _prepare_output_dir(output_dir, overwrite=args.overwrite)
 
     db_path = next(iter(sorted(bag_dir.glob("*.db3"))), None)
