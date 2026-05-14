@@ -56,3 +56,4 @@ def require_cv2(purpose: str):
             f"OpenCV is required for {purpose}. Install opencv-python or opencv-contrib-python."
         ) from exc
     return cv2
+

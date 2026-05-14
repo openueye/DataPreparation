@@ -89,3 +89,4 @@ def write_colorized_ply(path: Path, xyz: np.ndarray, rgb_u8: np.ndarray) -> None
     elements["green"] = rgb_u8[:, 1]
     elements["blue"] = rgb_u8[:, 2]
     PlyData([PlyElement.describe(elements, "vertex")], text=False).write(path)
+

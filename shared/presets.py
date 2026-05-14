@@ -52,3 +52,4 @@ def get_preset(name: str) -> PrepPreset:
     except KeyError as exc:
         valid = ", ".join(sorted(PRESETS))
         raise ValueError(f"Unknown preset '{name}'. Expected one of: {valid}") from exc
+

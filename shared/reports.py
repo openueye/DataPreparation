@@ -72,3 +72,4 @@ def write_workflow_report(
     path = task_report_path(layout, scene, task)
     write_json(path, payload)
     return path
+

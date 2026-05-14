@@ -51,14 +51,7 @@ def build_fishpoly_rectification_maps(
     cx: float | None = None,
     cy: float | None = None,
 ) -> Tuple[np.ndarray, np.ndarray, Dict[str, float]]:
-    """Return source-pixel maps for rectifying FishPoly images to pinhole.
-
-    The model follows ManifoldTechLtd/Odin-Nav-Stack fish2pinhole:
-    theta = atan(r)
-    theta_d = theta * (1 + k2*theta^2 + ... + k7*theta^7)
-    u_d = A11*x_d + A12*y_d + u0
-    v_d = A22*y_d + v0
-    """
+    """Return source-pixel maps for rectifying FishPoly images to pinhole."""
 
     src_width, src_height, a11, a22, u0, v0 = pinhole_from_k_like(camera_data)
     k2, k3, k4, k5, k6, k7 = fishpoly_coefficients(camera_data)
@@ -119,7 +112,7 @@ def project_pinhole_k_like(points_camera: np.ndarray, k_mat: np.ndarray) -> Tupl
     front = points_camera[in_front]
     front_depth = front[:, 2]
     uv[in_front, 0] = (k_mat[0, 0] * front[:, 0] + k_mat[0, 1] * front[:, 1]) / front_depth + k_mat[0, 2]
-    uv[in_front, 1] = (k_mat[1, 0] * front[:, 0] + k_mat[1, 1] * front[:, 1]) / front_depth + k_mat[1, 2]
+    uv[in_front, 1] = (k_mat[1, 1] * front[:, 1]) / front_depth + k_mat[1, 2]
     return uv, in_front
 
 
@@ -133,3 +126,4 @@ def project_world_to_pinhole(
     points_camera = (points_world.astype(np.float64) - translation_wc) @ rotation_wc
     uv, in_front = project_pinhole_k_like(points_camera, k_mat)
     return uv, points_camera[:, 2], in_front
+

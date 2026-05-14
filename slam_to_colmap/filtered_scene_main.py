@@ -11,14 +11,18 @@ from typing import Dict, List, Tuple
 import numpy as np
 
 try:
+    from data_preparation.shared.colmap_io import write_points3d_text
     from data_preparation.shared.io import write_json
+    from data_preparation.shared.pointcloud import read_ply_xyz_rgb
     from data_preparation.shared.poses import quaternion_xyzw_to_matrix
     from data_preparation.slam_to_colmap.converter import link_or_copy_images
 except ModuleNotFoundError:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from data_preparation.shared.colmap_io import write_points3d_text
     from data_preparation.shared.io import write_json
+    from data_preparation.shared.pointcloud import read_ply_xyz_rgb
     from data_preparation.shared.poses import quaternion_xyzw_to_matrix
     from data_preparation.slam_to_colmap.converter import link_or_copy_images
 
@@ -39,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-points", type=int, default=3_000_000, help="Maximum LiDAR points to export. Use 0 for all.")
     parser.add_argument("--copy-images", action="store_true", help="Copy images instead of symlinking to the SfM images.")
     parser.add_argument("--poses-csv", type=Path, default=None)
+    parser.add_argument("--points-ply", type=Path, default=None, help="Colored SLAM global map PLY.")
     parser.add_argument("--slam-frames-dir", type=Path, default=None)
     return parser.parse_args()
 
@@ -203,6 +208,30 @@ def write_lidar_points_in_sfm_frame(
     return source_points, written
 
 
+def write_ply_points_in_sfm_frame(
+    path: Path,
+    points_ply: Path,
+    max_points: int,
+    sfm_to_slam_scale: float,
+    sfm_to_slam_rotation: np.ndarray,
+    sfm_to_slam_translation: np.ndarray,
+) -> Tuple[int, int]:
+    xyz_slam, rgb = read_ply_xyz_rgb(points_ply)
+    source_points = int(xyz_slam.shape[0])
+    if max_points > 0 and source_points > max_points:
+        indices = np.linspace(0, source_points - 1, num=max_points, dtype=np.int64)
+        xyz_slam = xyz_slam[indices]
+        rgb = rgb[indices]
+
+    xyz_slam = np.asarray(xyz_slam, dtype=np.float64)
+    finite = np.isfinite(xyz_slam).all(axis=1)
+    xyz_slam = xyz_slam[finite]
+    rgb = np.clip(rgb[finite], 0, 255).astype(np.uint8)
+    xyz_sfm = (sfm_to_slam_rotation.T @ ((xyz_slam - sfm_to_slam_translation) / sfm_to_slam_scale).T).T
+    write_points3d_text(path, xyz_sfm, rgb)
+    return source_points, int(xyz_sfm.shape[0])
+
+
 def copy_sfm_pose_model(sfm_sparse0: Path, output_sparse0: Path) -> None:
     output_sparse0.mkdir(parents=True, exist_ok=True)
     for filename in ("cameras.bin", "images.bin"):
@@ -234,11 +263,13 @@ def convert_filtered_scene(args: argparse.Namespace) -> Dict[str, object]:
     else:
         output_dir = args.output_dir.expanduser().resolve()
     poses_csv = (args.poses_csv or scene_dir / "poses" / "camera_poses.csv").expanduser().resolve()
+    default_points_ply = scene_dir / "lidar" / "global_map_slam_odom.ply"
+    points_ply = (args.points_ply.expanduser().resolve() if args.points_ply else default_points_ply.expanduser().resolve())
     slam_frames_dir = (args.slam_frames_dir or scene_dir / "lidar" / "slam_frames").expanduser().resolve()
     sfm_sparse0 = sfm_scene_dir / "sparse" / "0"
     output_sparse0 = output_dir / "sparse" / "0"
 
-    for required in (scene_dir, sfm_scene_dir / "images", sfm_sparse0 / "images.bin", sfm_sparse0 / "cameras.bin", poses_csv, slam_frames_dir):
+    for required in (scene_dir, sfm_scene_dir / "images", sfm_sparse0 / "images.bin", sfm_sparse0 / "cameras.bin", poses_csv):
         if not required.exists():
             raise FileNotFoundError(f"Missing required input: {required}")
 
@@ -250,19 +281,37 @@ def convert_filtered_scene(args: argparse.Namespace) -> Dict[str, object]:
     copy_sfm_pose_model(sfm_sparse0, output_sparse0)
     link_or_copy_images(sfm_scene_dir / "images", output_dir / "images", copy_images=args.copy_images)
 
-    npz_files = sorted(slam_frames_dir.glob("*.npz"))
-    if not npz_files:
-        raise FileNotFoundError(f"No .npz SLAM frames found under {slam_frames_dir}")
-    counts = [npz_point_count(path) for path in npz_files]
-    source_points, written_points = write_lidar_points_in_sfm_frame(
-        output_sparse0 / "points3D.txt",
-        npz_files,
-        counts,
-        max_points=args.max_points,
-        sfm_to_slam_scale=scale,
-        sfm_to_slam_rotation=rotation,
-        sfm_to_slam_translation=translation,
-    )
+    if points_ply.exists():
+        points_source = str(points_ply)
+        source_lidar_frames = None
+        source_points, written_points = write_ply_points_in_sfm_frame(
+            output_sparse0 / "points3D.txt",
+            points_ply,
+            max_points=args.max_points,
+            sfm_to_slam_scale=scale,
+            sfm_to_slam_rotation=rotation,
+            sfm_to_slam_translation=translation,
+        )
+    else:
+        if args.points_ply is not None:
+            raise FileNotFoundError(f"Missing required SLAM point cloud PLY: {points_ply}")
+        if not slam_frames_dir.exists():
+            raise FileNotFoundError(f"Missing SLAM point cloud PLY and legacy SLAM frames directory: {points_ply}, {slam_frames_dir}")
+        npz_files = sorted(slam_frames_dir.glob("*.npz"))
+        if not npz_files:
+            raise FileNotFoundError(f"No .npz SLAM frames found under {slam_frames_dir}")
+        counts = [npz_point_count(path) for path in npz_files]
+        points_source = str(slam_frames_dir / "*.npz")
+        source_lidar_frames = len(npz_files)
+        source_points, written_points = write_lidar_points_in_sfm_frame(
+            output_sparse0 / "points3D.txt",
+            npz_files,
+            counts,
+            max_points=args.max_points,
+            sfm_to_slam_scale=scale,
+            sfm_to_slam_rotation=rotation,
+            sfm_to_slam_translation=translation,
+        )
 
     metadata = {
         "source_scene": str(scene_dir),
@@ -272,8 +321,8 @@ def convert_filtered_scene(args: argparse.Namespace) -> Dict[str, object]:
         "pose_source": str(sfm_sparse0 / "images.bin"),
         "camera_source": str(sfm_sparse0 / "cameras.bin"),
         "image_source": str(sfm_scene_dir / "images"),
-        "points_source": str(slam_frames_dir / "*.npz"),
-        "source_lidar_frames": len(npz_files),
+        "points_source": points_source,
+        "source_lidar_frames": source_lidar_frames,
         "source_points": int(source_points),
         "written_points": int(written_points),
         "num_sfm_images": len(sfm_centers),

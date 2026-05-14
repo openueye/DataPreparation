@@ -31,3 +31,4 @@ def nearest_neighbor_stats(reference_ts: np.ndarray, target_ts: np.ndarray) -> O
         "p95_ms": float(np.percentile(deltas_ms, 95)),
         "max_ms": float(deltas_ms.max()),
     }
+

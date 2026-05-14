@@ -3,66 +3,170 @@
 `data_preparation` prepares COLMAP-compatible scenes for `3DGS_baseline01`.
 Training, checkpoints, viewers, and model code live in the training repository.
 
-## Supported Routes
+## Formal Routes
 
-Pure visual COLMAP/SfM scene:
-
-```bash
-python -m data_preparation prepare \
-  --scene Downtown1 \
-  --source rosbag-sfm \
-  --preset full
-```
-
-Video-to-COLMAP scene:
-
-```bash
-python -m data_preparation prepare \
-  --scene MyScene \
-  --source video \
-  --video-path /path/to/video.mp4
-```
-
-Hybrid SfM-camera / LiDAR-seed scene:
-
-```bash
-python -m data_preparation hybrid-sfm-lidar \
-  --scene-dir /path/to/filtered_slam_scene \
-  --sfm-scene-dir /path/to/SFM_colmap_scene \
-  --scene-name Downtown1_sparse322k
-```
-
-Hybrid output is still a COLMAP-compatible scene. The trainer consumes it with
-`--data-format colmap`.
-
-Default hybrid outputs should live under:
+The public data-preparation surface is intentionally limited to three routes:
 
 ```text
-04_ProcessedData/010_scenes_colmap/hybrid_sfm_lidar/<scene_variant>
+sfm     rectified images -> COLMAP SfM scene
+hybrid  SfM cameras/poses + aligned SLAM/LiDAR points -> COLMAP scene
+slam    SLAM poses + SLAM/LiDAR points -> COLMAP text scene
 ```
 
-The active processed-data categories are:
+The route entry scripts are collected under route-specific folders:
 
 ```text
-sfm               # pure SfM/COLMAP
-slam_compat       # deprecated SLAM camera + LiDAR points comparison
-hybrid_sfm_lidar  # SfM cameras + transformed LiDAR seed
+sfm/main.py
+hybrid/main.py
+slam/main.py
 ```
 
-## Deprecated Route
-
-The old `slam-to-colmap` / `*_slam_compat` route is disabled. It used SLAM
-camera poses plus LiDAR points, so it did not isolate LiDAR initialization from
-camera-pose alignment. The data can remain active as `slam_compat` for
-comparison, but new LiDAR initialization experiments should use
-`hybrid-sfm-lidar`.
-
-## Useful Commands
+Use the top-level command to see only these formal routes:
 
 ```bash
 python -m data_preparation
-python -m data_preparation inspect --scene Downtown1
-python -m data_preparation prepare --scene Downtown1 --source rosbag-sfm --preset full
-python -m data_preparation hybrid-sfm-lidar --help
-python -m data_preparation video2colmap --help
+```
+
+Legacy/debug commands are still callable directly for reproducibility, but they
+are hidden from the default summary.
+
+## SFM
+
+Input:
+
+```text
+images_rectified/
+```
+
+Processing:
+
+```text
+Run COLMAP only on the rectified images.
+```
+
+Output:
+
+```text
+04_ProcessedData/sfm/<scene>/
+├── images/
+└── sparse/0/
+    ├── cameras.bin
+    ├── images.bin
+    └── points3D.bin
+```
+
+Example:
+
+```bash
+python -m data_preparation sfm \
+  --scene Ferrari1 \
+  --image-dir /path/to/Ferrari1_pure_headerstamp/images_rectified \
+  -- --camera-model PINHOLE --matcher sequential --sift-gpu
+```
+
+Pass `--output-dir` to override the default `04_ProcessedData/sfm/<scene>`
+location.
+
+## Hybrid
+
+Input:
+
+```text
+SLAM/reference scene:
+  images_rectified/
+  poses/camera_poses.csv
+  lidar/global_map_slam_odom.ply
+
+SfM scene:
+  images/
+  sparse/0/cameras.bin
+  sparse/0/images.bin
+```
+
+Processing:
+
+```text
+Keep SfM cameras, images, and poses.
+Estimate a similarity transform from same-name SfM and SLAM camera centers.
+Transform the colored SLAM/LiDAR point cloud into the SfM coordinate frame.
+Write those points as sparse/0/points3D.txt.
+```
+
+Output:
+
+```text
+04_ProcessedData/hybrid_sfm_lidar/<scene>/
+├── images -> SfM images
+└── sparse/0/
+    ├── cameras.bin
+    ├── images.bin
+    └── points3D.txt
+```
+
+Example:
+
+```bash
+python -m data_preparation hybrid \
+  --scene Ferrari1 \
+  --scene-dir /path/to/Ferrari1_pure_headerstamp \
+  --sfm-scene-dir /home/haibo/Documents/Thesis/04_ProcessedData/sfm/Ferrari1 \
+  --points-ply /path/to/Ferrari1_pure_headerstamp/lidar/global_map_slam_odom.ply \
+  -- --max-points 3000000
+```
+
+Pass `--output-dir` to override the default
+`04_ProcessedData/hybrid_sfm_lidar/<scene>` location.
+
+## SLAM
+
+Input:
+
+```text
+images_rectified/
+poses/camera_poses.csv              # uses T_odom_from_camera_*
+calib/camera_rectified.json
+associations/frame_associations.csv
+lidar/slam_frames_manifest.csv
+lidar/global_map_slam_odom.ply
+```
+
+Processing:
+
+```text
+Do not run SfM.
+Convert SLAM camera poses and the colored SLAM/LiDAR map into a COLMAP text model.
+```
+
+Output:
+
+```text
+04_ProcessedData/slam_compat/<scene>/
+├── images/
+└── sparse/0/
+    ├── cameras.txt
+    ├── images.txt
+    └── points3D.txt
+```
+
+Example:
+
+```bash
+python -m data_preparation slam \
+  --scene Ferrari1 \
+  --input-dir /path/to/Ferrari1_pure_headerstamp \
+  -- --copy-images
+```
+
+Pass `--output-dir` to override the default
+`04_ProcessedData/slam_compat/<scene>` location.
+
+## Training
+
+All three routes write COLMAP-compatible scenes. The trainer consumes them with:
+
+```bash
+python train.py \
+  --mode train \
+  --data-format colmap \
+  --data-dir /path/to/output_scene
 ```

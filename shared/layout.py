@@ -59,6 +59,10 @@ class DataPrepLayout:
 
     @property
     def colmap_scenes_root(self) -> Path:
+        return self.processed_root
+
+    @property
+    def legacy_colmap_scenes_root(self) -> Path:
         return self.processed_root / "010_scenes_colmap"
 
     @property
@@ -120,3 +124,4 @@ class DataPrepLayout:
         raise FileNotFoundError(
             f"Could not infer video for scene '{scene}' under {self.video_root}; pass --video-path."
         )
+

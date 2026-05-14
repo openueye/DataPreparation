@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable
 
 import numpy as np
 
@@ -54,3 +54,4 @@ def write_points3d_text(path: Path, xyz: np.ndarray, rgb: np.ndarray | None = No
                 f"{idx} {point[0]:.17g} {point[1]:.17g} {point[2]:.17g} "
                 f"{int(color[0])} {int(color[1])} {int(color[2])} 0\n"
             )
+

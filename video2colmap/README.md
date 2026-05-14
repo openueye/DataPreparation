@@ -70,14 +70,14 @@ python -m data_preparation video2colmap --help
 PYTHONPATH=/home/haibo/Documents/Thesis/00_Baselines \
 python -m data_preparation video2colmap \
   --video-path /path/to/object_video.mp4 \
-  --output-dir /home/haibo/Documents/Thesis/04_ProcessedData/010_scenes_colmap/my_object_colmap \
+  --output-dir /home/haibo/Documents/Thesis/04_ProcessedData/sfm/my_object_colmap \
   --sample-fps 3 \
   --matcher sequential \
   --max-image-size 1600 \
   --sift-gpu
 ```
 
-输出完成后，`04_ProcessedData/010_scenes_colmap/my_object_colmap` 就可以直接给训练脚本使用。
+输出完成后，`04_ProcessedData/sfm/my_object_colmap` 就可以直接给训练脚本使用。
 
 ## 然后怎么训练
 
@@ -90,7 +90,7 @@ cd /home/haibo/Documents/Thesis/00_Baselines/3DGS_baseline01
 python train.py \
   --mode train \
   --data-format colmap \
-  --data-dir /home/haibo/Documents/Thesis/04_ProcessedData/010_scenes_colmap/my_object_colmap \
+  --data-dir /home/haibo/Documents/Thesis/04_ProcessedData/sfm/my_object_colmap \
   --save-dir /home/haibo/Documents/Thesis/05_Outputs/010_training_runs/my_object_colmap/colmap/default_run
 ```
 
@@ -189,7 +189,7 @@ python train.py \
 PYTHONPATH=/home/haibo/Documents/Thesis/00_Baselines \
 python -m data_preparation video2colmap \
   --video-path /home/haibo/Documents/Thesis/03_Datasets/003_videos/my_turntable.mp4 \
-  --output-dir /home/haibo/Documents/Thesis/04_ProcessedData/010_scenes_colmap/my_turntable_scene \
+  --output-dir /home/haibo/Documents/Thesis/04_ProcessedData/sfm/my_turntable_scene \
   --sample-fps 2.5 \
   --matcher exhaustive \
   --max-image-size 1600 \

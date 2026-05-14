@@ -18,7 +18,17 @@ def load_pose_rows_ordered(path: Path) -> List[dict]:
     return sorted(rows, key=lambda row: row["frame_id"])
 
 
+def matrix_from_pose_row(row: dict, prefix: str) -> np.ndarray:
+    return np.asarray(
+        [[float(row[f"{prefix}_{i}{j}"]) for j in range(4)] for i in range(4)],
+        dtype=np.float64,
+    )
+
+
 def world_from_camera_from_row(row: dict) -> np.ndarray:
+    if "T_odom_from_camera_00" in row:
+        return matrix_from_pose_row(row, "T_odom_from_camera")
+
     if "T_world_from_camera_rowmajor_00" in row:
         values = [
             float(row[f"T_world_from_camera_rowmajor_{idx // 4}{idx % 4}"])
@@ -122,3 +132,4 @@ def rotmat_to_qvec_colmap(rotation: np.ndarray) -> np.ndarray:
 
 def frame_ids(rows: Iterable[dict]) -> List[str]:
     return [row["frame_id"] for row in rows]
+
