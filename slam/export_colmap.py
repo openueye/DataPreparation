@@ -23,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--images-subdir", default="images")
     parser.add_argument("--points-ply", type=Path, default=None)
+    parser.add_argument("--max-points", type=int, default=3_000_000, help="Maximum point count after voxel downsampling. Use 0 for all.")
     parser.add_argument("--copy-images", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
@@ -34,6 +35,7 @@ def main() -> None:
         args.input_dir,
         args.output_dir,
         points_ply=args.points_ply,
+        max_points=args.max_points,
         copy_images=args.copy_images,
         overwrite=args.overwrite,
         images_subdir=args.images_subdir,
@@ -46,7 +48,9 @@ def main() -> None:
     if "slam_matched_frame_count" in report:
         print(f"[INFO] slam_matched_frame_count={report['slam_matched_frame_count']}")
     print(f"[INFO] image_count={report.get('poses', {}).get('frame_count', report.get('num_images'))}")
-    print(f"[INFO] point_count={report.get('points3D', {}).get('point_count', report.get('written_points'))}")
+    print(f"[INFO] point_count={report.get('points3D', {}).get('written_points', report.get('written_points'))}")
+    if report.get("points3D", {}).get("points3D_ply"):
+        print(f"[INFO] points_ply={report['points3D']['points3D_ply']}")
 
 
 if __name__ == "__main__":

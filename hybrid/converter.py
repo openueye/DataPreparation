@@ -11,18 +11,16 @@ from typing import Dict, List, Tuple
 import numpy as np
 
 try:
-    from data_preparation.shared.colmap_io import write_points3d_text
     from data_preparation.shared.io import write_json
-    from data_preparation.shared.pointcloud import read_ply_xyz_rgb
+    from data_preparation.shared.pointcloud import read_ply_xyz_rgb, write_downsampled_colmap_points_with_ply
     from data_preparation.shared.poses import quaternion_xyzw_to_matrix
     from data_preparation.slam.converter import link_or_copy_images
 except ModuleNotFoundError:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from data_preparation.shared.colmap_io import write_points3d_text
     from data_preparation.shared.io import write_json
-    from data_preparation.shared.pointcloud import read_ply_xyz_rgb
+    from data_preparation.shared.pointcloud import read_ply_xyz_rgb, write_downsampled_colmap_points_with_ply
     from data_preparation.shared.poses import quaternion_xyzw_to_matrix
     from data_preparation.slam.converter import link_or_copy_images
 
@@ -135,101 +133,49 @@ def similarity_sfm_to_slam(sfm_centers: Dict[str, np.ndarray], slam_centers: Dic
     return scale, rotation, translation, stats
 
 
-def npz_point_count(path: Path) -> int:
-    with np.load(path) as data:
-        if "xyz" not in data:
-            raise KeyError(f"{path} does not contain an 'xyz' array.")
-        return int(data["xyz"].shape[0])
-
-
-def select_frame_ranges(counts: List[int], max_points: int) -> Tuple[int, np.ndarray, List[Tuple[int, int]]]:
-    source_points = int(sum(counts))
-    written_points = source_points if max_points <= 0 else min(int(max_points), source_points)
-    sample_indices = (
-        np.arange(source_points, dtype=np.int64)
-        if written_points == source_points
-        else np.linspace(0, source_points - 1, num=written_points, dtype=np.int64)
-    )
-    starts = np.cumsum(np.asarray([0] + counts[:-1], dtype=np.int64))
-    ends = starts + np.asarray(counts, dtype=np.int64)
-    ranges = [
-        (
-            int(np.searchsorted(sample_indices, start, side="left")),
-            int(np.searchsorted(sample_indices, end, side="left")),
-        )
-        for start, end in zip(starts, ends)
-    ]
-    return source_points, sample_indices, ranges
-
-
-def write_lidar_points_in_sfm_frame(
-    path: Path,
+def load_lidar_points_in_sfm_frame(
     npz_files: List[Path],
-    counts: List[int],
-    max_points: int,
     sfm_to_slam_scale: float,
     sfm_to_slam_rotation: np.ndarray,
     sfm_to_slam_translation: np.ndarray,
-) -> Tuple[int, int]:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    source_points, sample_indices, ranges = select_frame_ranges(counts, max_points)
-    frame_starts = np.cumsum(np.asarray([0] + counts[:-1], dtype=np.int64))
-    written = 0
-
-    with path.open("w", encoding="utf-8") as handle:
-        handle.write("# 3D point list with one line of data per point:\n")
-        handle.write("#   POINT3D_ID, X, Y, Z, R, G, B, ERROR, TRACK[] as (IMAGE_ID, POINT2D_IDX)\n")
-        handle.write(f"# Number of points: {sample_indices.shape[0]}, mean track length: 0\n")
-
-        for npz_path, frame_start, (range_start, range_end) in zip(npz_files, frame_starts, ranges):
-            if range_start == range_end:
-                continue
-            local_indices = sample_indices[range_start:range_end] - frame_start
-            with np.load(npz_path) as data:
-                xyz_slam = np.asarray(data["xyz"], dtype=np.float64)[local_indices]
-                rgb = (
-                    np.asarray(data["rgb"])[local_indices]
-                    if "rgb" in data
-                    else np.full((xyz_slam.shape[0], 3), 128, dtype=np.uint8)
-                )
-
-            finite = np.isfinite(xyz_slam).all(axis=1)
-            xyz_slam = xyz_slam[finite]
-            rgb = np.clip(rgb[finite], 0, 255).astype(np.uint8)
-
-            xyz_sfm = (sfm_to_slam_rotation.T @ ((xyz_slam - sfm_to_slam_translation) / sfm_to_slam_scale).T).T
-            for point, color in zip(xyz_sfm, rgb):
-                written += 1
-                handle.write(
-                    f"{written} {point[0]:.17g} {point[1]:.17g} {point[2]:.17g} "
-                    f"{int(color[0])} {int(color[1])} {int(color[2])} 0\n"
-                )
-
-    return source_points, written
+) -> Tuple[np.ndarray, np.ndarray, int]:
+    xyz_chunks: List[np.ndarray] = []
+    rgb_chunks: List[np.ndarray] = []
+    source_points = 0
+    for npz_path in npz_files:
+        with np.load(npz_path) as data:
+            xyz_slam = np.asarray(data["xyz"], dtype=np.float64)
+            rgb = (
+                np.asarray(data["rgb"])
+                if "rgb" in data
+                else np.full((xyz_slam.shape[0], 3), 128, dtype=np.uint8)
+            )
+        source_points += int(xyz_slam.shape[0])
+        finite = np.isfinite(xyz_slam).all(axis=1)
+        xyz_slam = xyz_slam[finite]
+        rgb = np.clip(rgb[finite], 0, 255).astype(np.uint8)
+        xyz_sfm = (sfm_to_slam_rotation.T @ ((xyz_slam - sfm_to_slam_translation) / sfm_to_slam_scale).T).T
+        xyz_chunks.append(xyz_sfm.astype(np.float32))
+        rgb_chunks.append(rgb)
+    if not xyz_chunks:
+        return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.uint8), source_points
+    return np.concatenate(xyz_chunks, axis=0), np.concatenate(rgb_chunks, axis=0), source_points
 
 
-def write_ply_points_in_sfm_frame(
-    path: Path,
+def load_ply_points_in_sfm_frame(
     points_ply: Path,
-    max_points: int,
     sfm_to_slam_scale: float,
     sfm_to_slam_rotation: np.ndarray,
     sfm_to_slam_translation: np.ndarray,
-) -> Tuple[int, int]:
+) -> Tuple[np.ndarray, np.ndarray, int]:
     xyz_slam, rgb = read_ply_xyz_rgb(points_ply)
     source_points = int(xyz_slam.shape[0])
-    if max_points > 0 and source_points > max_points:
-        indices = np.linspace(0, source_points - 1, num=max_points, dtype=np.int64)
-        xyz_slam = xyz_slam[indices]
-        rgb = rgb[indices]
-
     xyz_slam = np.asarray(xyz_slam, dtype=np.float64)
     finite = np.isfinite(xyz_slam).all(axis=1)
     xyz_slam = xyz_slam[finite]
     rgb = np.clip(rgb[finite], 0, 255).astype(np.uint8)
     xyz_sfm = (sfm_to_slam_rotation.T @ ((xyz_slam - sfm_to_slam_translation) / sfm_to_slam_scale).T).T
-    write_points3d_text(path, xyz_sfm, rgb)
-    return source_points, int(xyz_sfm.shape[0])
+    return xyz_sfm.astype(np.float32), rgb, source_points
 
 
 def copy_sfm_pose_model(sfm_sparse0: Path, output_sparse0: Path) -> None:
@@ -284,10 +230,8 @@ def convert_filtered_scene(args: argparse.Namespace) -> Dict[str, object]:
     if points_ply.exists():
         points_source = str(points_ply)
         source_lidar_frames = None
-        source_points, written_points = write_ply_points_in_sfm_frame(
-            output_sparse0 / "points3D.txt",
+        xyz_sfm, rgb, source_points = load_ply_points_in_sfm_frame(
             points_ply,
-            max_points=args.max_points,
             sfm_to_slam_scale=scale,
             sfm_to_slam_rotation=rotation,
             sfm_to_slam_translation=translation,
@@ -300,18 +244,22 @@ def convert_filtered_scene(args: argparse.Namespace) -> Dict[str, object]:
         npz_files = sorted(slam_frames_dir.glob("*.npz"))
         if not npz_files:
             raise FileNotFoundError(f"No .npz SLAM frames found under {slam_frames_dir}")
-        counts = [npz_point_count(path) for path in npz_files]
         points_source = str(slam_frames_dir / "*.npz")
         source_lidar_frames = len(npz_files)
-        source_points, written_points = write_lidar_points_in_sfm_frame(
-            output_sparse0 / "points3D.txt",
+        xyz_sfm, rgb, source_points = load_lidar_points_in_sfm_frame(
             npz_files,
-            counts,
-            max_points=args.max_points,
             sfm_to_slam_scale=scale,
             sfm_to_slam_rotation=rotation,
             sfm_to_slam_translation=translation,
         )
+    points_meta = write_downsampled_colmap_points_with_ply(
+        output_sparse0 / "points3D.txt",
+        output_sparse0 / "points3D.ply",
+        xyz_sfm,
+        rgb,
+        max_points=args.max_points,
+    )
+    written_points = int(points_meta["written_points"])
 
     metadata = {
         "source_scene": str(scene_dir),
@@ -322,6 +270,7 @@ def convert_filtered_scene(args: argparse.Namespace) -> Dict[str, object]:
         "camera_source": str(sfm_sparse0 / "cameras.bin"),
         "image_source": str(sfm_scene_dir / "images"),
         "points_source": points_source,
+        "points3D": points_meta,
         "source_lidar_frames": source_lidar_frames,
         "source_points": int(source_points),
         "written_points": int(written_points),
@@ -349,6 +298,7 @@ def main() -> None:
     report = convert_filtered_scene(args)
     print(f"[INFO] Hybrid COLMAP scene written: {report['output_scene']}")
     print(f"[INFO] SfM images={report['num_sfm_images']} LiDAR points={report['written_points']}")
+    print(f"[INFO] points_ply={report['points3D']['points3D_ply']}")
     print(
         "[INFO] alignment center residual "
         f"median={report['alignment']['center_residual_median']:.4f}m "

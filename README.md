@@ -88,7 +88,8 @@ Processing:
 Keep SfM cameras, images, and poses.
 Estimate a similarity transform from same-name SfM and SLAM camera centers.
 Transform the colored SLAM/LiDAR point cloud into the SfM coordinate frame.
-Write those points as sparse/0/points3D.txt.
+Voxel-downsample those points to the requested point budget.
+Write the same downsampled points as sparse/0/points3D.txt and sparse/0/points3D.ply.
 ```
 
 Output:
@@ -99,7 +100,8 @@ Output:
 └── sparse/0/
     ├── cameras.bin
     ├── images.bin
-    └── points3D.txt
+    ├── points3D.txt
+    └── points3D.ply
 ```
 
 Example:
@@ -110,7 +112,7 @@ python -m data_preparation hybrid \
   --scene-dir /path/to/Ferrari1_pure_headerstamp \
   --sfm-scene-dir /home/haibo/Documents/Thesis/04_ProcessedData/sfm/Ferrari1 \
   --points-ply /path/to/Ferrari1_pure_headerstamp/lidar/global_map_slam_odom.ply \
-  -- --max-points 3000000
+  --max-points 3000000
 ```
 
 Pass `--output-dir` to override the default
@@ -134,6 +136,8 @@ Processing:
 ```text
 Do not run SfM.
 Convert SLAM camera poses and the colored SLAM/LiDAR map into a COLMAP text model.
+Voxel-downsample the point cloud to the requested point budget.
+Write the same downsampled points as sparse/0/points3D.txt and sparse/0/points3D.ply.
 ```
 
 Output:
@@ -144,7 +148,8 @@ Output:
 └── sparse/0/
     ├── cameras.txt
     ├── images.txt
-    └── points3D.txt
+    ├── points3D.txt
+    └── points3D.ply
 ```
 
 Example:
@@ -153,6 +158,7 @@ Example:
 python -m data_preparation slam \
   --scene Ferrari1 \
   --input-dir /path/to/Ferrari1_pure_headerstamp \
+  --max-points 3000000 \
   -- --copy-images
 ```
 

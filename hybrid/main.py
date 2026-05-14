@@ -18,6 +18,7 @@ def run(argv: List[str]) -> int:
     parser.add_argument("--scene", default=None, help="Scene variant name used for the default hybrid output.")
     parser.add_argument("--output-dir", type=Path, default=None, help="Explicit hybrid scene output directory.")
     parser.add_argument("--points-ply", type=Path, default=None, help="Colored SLAM point cloud PLY.")
+    parser.add_argument("--max-points", type=int, default=3_000_000, help="Maximum point count after voxel downsampling. Use 0 for all.")
     parser.add_argument("--poses-csv", type=Path, default=None, help="SLAM camera poses CSV.")
     parser.add_argument("--repo-root", type=Path, default=None, help="Optional 00_Baselines repo root.")
     parser.add_argument("--thesis-root", type=Path, default=None, help="Optional explicit Thesis root.")
@@ -40,6 +41,8 @@ def run(argv: List[str]) -> int:
         str(output_dir),
         "--scene-name",
         scene_name,
+        "--max-points",
+        str(args.max_points),
     ]
     if args.points_ply is not None:
         backend_argv.extend(["--points-ply", str(args.points_ply.expanduser().resolve())])

@@ -4,24 +4,24 @@ import csv
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import numpy as np
 
 try:
     from data_preparation.shared.camera_models import pinhole_from_k_like
-    from data_preparation.shared.colmap_io import write_cameras_text, write_images_text, write_points3d_text
+    from data_preparation.shared.colmap_io import write_cameras_text, write_images_text
     from data_preparation.shared.io import find_image_path, load_json, write_json
-    from data_preparation.shared.pointcloud import read_ply_xyz_rgb
+    from data_preparation.shared.pointcloud import read_ply_xyz_rgb, write_downsampled_colmap_points_with_ply
     from data_preparation.shared.poses import load_pose_rows_ordered, matrix_from_pose_row, rotmat_to_qvec_colmap, world_from_camera_from_row
 except ModuleNotFoundError:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from data_preparation.shared.camera_models import pinhole_from_k_like
-    from data_preparation.shared.colmap_io import write_cameras_text, write_images_text, write_points3d_text
+    from data_preparation.shared.colmap_io import write_cameras_text, write_images_text
     from data_preparation.shared.io import find_image_path, load_json, write_json
-    from data_preparation.shared.pointcloud import read_ply_xyz_rgb
+    from data_preparation.shared.pointcloud import read_ply_xyz_rgb, write_downsampled_colmap_points_with_ply
     from data_preparation.shared.poses import load_pose_rows_ordered, matrix_from_pose_row, rotmat_to_qvec_colmap, world_from_camera_from_row
 
 
@@ -280,81 +280,6 @@ def build_pure_headerstamp_image_records(pose_rows: Iterable[Mapping[str, str]],
     return records
 
 
-def parse_ascii_ply_vertices(path: Path) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
-    with path.open("r", encoding="utf-8") as handle:
-        header_lines: List[str] = []
-        for line in handle:
-            header_lines.append(line.rstrip("\n"))
-            if line.strip() == "end_header":
-                break
-        else:
-            raise ValueError(f"PLY header is incomplete: {path}")
-        if not header_lines or header_lines[0] != "ply":
-            raise ValueError(f"Not a PLY file: {path}")
-        if "format ascii 1.0" not in header_lines:
-            raise ValueError(f"Only ASCII PLY is supported: {path}")
-        vertex_count = None
-        property_names: List[str] = []
-        in_vertex_element = False
-        for line in header_lines[1:]:
-            parts = line.split()
-            if len(parts) >= 3 and parts[0] == "element" and parts[1] == "vertex":
-                vertex_count = int(parts[2])
-                in_vertex_element = True
-                continue
-            if len(parts) >= 3 and parts[0] == "element" and parts[1] != "vertex":
-                in_vertex_element = False
-                continue
-            if in_vertex_element and len(parts) == 3 and parts[0] == "property":
-                property_names.append(parts[2])
-        if vertex_count is None:
-            raise ValueError(f"PLY vertex count not found: {path}")
-        index_of = {name: idx for idx, name in enumerate(property_names)}
-        if not {"x", "y", "z"}.issubset(index_of):
-            raise ValueError(f"PLY vertex properties must include x/y/z: {path}")
-        has_color = all(name in index_of for name in ("red", "green", "blue"))
-        yielded = 0
-        for line in handle:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            parts = stripped.split()
-            xyz = np.asarray(
-                [float(parts[index_of["x"]]), float(parts[index_of["y"]]), float(parts[index_of["z"]])],
-                dtype=np.float64,
-            )
-            rgb = (
-                np.asarray(
-                    [int(parts[index_of["red"]]), int(parts[index_of["green"]]), int(parts[index_of["blue"]])],
-                    dtype=np.int64,
-                )
-                if has_color
-                else np.asarray([255, 255, 255], dtype=np.int64)
-            )
-            yield xyz, rgb
-            yielded += 1
-            if yielded >= vertex_count:
-                break
-        if yielded != vertex_count:
-            raise ValueError(f"PLY vertex count mismatch in {path}: expected {vertex_count}, got {yielded}")
-
-
-def write_points3d_from_ascii_ply(path: Path, source_ply_path: Path) -> Dict[str, Any]:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    point_count = 0
-    with path.open("w", encoding="utf-8") as handle:
-        handle.write("# 3D point list with one line of data per point:\n")
-        handle.write("#   POINT3D_ID, X, Y, Z, R, G, B, ERROR, TRACK[]\n")
-        handle.write("# TRACK[] is intentionally empty because lidar SLAM map points are not feature tracks.\n")
-        for point_id, (xyz, rgb) in enumerate(parse_ascii_ply_vertices(source_ply_path), start=1):
-            handle.write(
-                f"{point_id} {xyz[0]:.6f} {xyz[1]:.6f} {xyz[2]:.6f} "
-                f"{int(rgb[0])} {int(rgb[1])} {int(rgb[2])} 0\n"
-            )
-            point_count += 1
-    return {"point_count": point_count}
-
-
 def copy_support_files(source_paths: Mapping[str, Path], output_dir: Path) -> None:
     metadata_dir = output_dir / "metadata"
     metadata_dir.mkdir(parents=True, exist_ok=True)
@@ -429,18 +354,12 @@ def validate_colmap_camera_compatibility(
     }
 
 
-def deterministic_subsample(xyz: np.ndarray, rgb: np.ndarray, max_points: int) -> Tuple[np.ndarray, np.ndarray]:
-    if max_points <= 0 or xyz.shape[0] <= max_points:
-        return xyz, rgb
-    indices = np.linspace(0, xyz.shape[0] - 1, num=max_points, dtype=np.int64)
-    return xyz[indices], rgb[indices]
-
-
 def convert_pure_headerstamp_scene(
     scene_dir: Path,
     output_dir: Path,
     *,
     points_ply: Optional[Path] = None,
+    max_points: int = 3_000_000,
     copy_images: bool = False,
     overwrite: bool = False,
     images_subdir: str = "images",
@@ -481,7 +400,14 @@ def convert_pure_headerstamp_scene(
 
     image_records = build_pure_headerstamp_image_records(pose_rows, images_dir)
     write_pure_headerstamp_images_txt(sparse_dir / "images.txt", image_records)
-    points_meta = write_points3d_from_ascii_ply(sparse_dir / "points3D.txt", source_paths["lidar_slam_ply"])
+    xyz, rgb = read_ply_points(source_paths["lidar_slam_ply"])
+    points_meta = write_downsampled_colmap_points_with_ply(
+        sparse_dir / "points3D.txt",
+        sparse_dir / "points3D.ply",
+        xyz,
+        rgb,
+        max_points=max_points,
+    )
     copy_support_files(source_paths, output_dir)
 
     metadata = {
@@ -498,6 +424,7 @@ def convert_pure_headerstamp_scene(
         "notes": [
             "World frame follows the odom frame from poses/camera_poses.csv.",
             "points3D.txt is populated from lidar/global_map_slam_odom.ply.",
+            "sparse/0/points3D.ply contains the same voxel-downsampled points for CloudCompare inspection.",
             "Lidar points do not have COLMAP observation tracks, so TRACK[] is left empty.",
         ],
         "baseline_type": "SLAM-pose/LiDAR-points COLMAP-compatible scene.",
@@ -530,7 +457,7 @@ def convert_scene(
     output_dir: Path,
     *,
     points_ply: Optional[Path] = None,
-    max_points: int = 300_000,
+    max_points: int = 3_000_000,
     copy_images: bool = False,
     allow_pinhole_approximation: bool = False,
     overwrite: bool = False,
@@ -542,6 +469,7 @@ def convert_scene(
             scene_dir,
             output_dir,
             points_ply=points_ply,
+            max_points=max_points,
             copy_images=copy_images,
             overwrite=overwrite,
             images_subdir=images_subdir,
@@ -580,9 +508,13 @@ def convert_scene(
     write_images_text(sparse_dir / "images.txt", image_records)
 
     xyz, rgb = read_ply_points(points_ply)
-    source_points = int(xyz.shape[0])
-    xyz, rgb = deterministic_subsample(xyz, rgb, max_points=max_points)
-    write_points3d_text(sparse_dir / "points3D.txt", xyz, rgb)
+    points_meta = write_downsampled_colmap_points_with_ply(
+        sparse_dir / "points3D.txt",
+        sparse_dir / "points3D.ply",
+        xyz,
+        rgb,
+        max_points=max_points,
+    )
 
     metadata = {
         "source_scene": str(scene_dir),
@@ -594,8 +526,9 @@ def convert_scene(
         "projection_model_note": camera_compatibility["note"],
         "pose_direction": "poses.csv T_world_from_camera converted to COLMAP world-to-camera qvec/tvec",
         "points_source": str(points_ply),
-        "source_points": source_points,
-        "written_points": int(xyz.shape[0]),
+        "points3D": points_meta,
+        "source_points": int(points_meta["source_points"]),
+        "written_points": int(points_meta["written_points"]),
         "num_images": len(image_records),
         "copy_images": bool(copy_images),
         "baseline_type": "SLAM-pose/LiDAR-points COLMAP-compatible scene, not a pure RGB-only COLMAP SfM baseline.",

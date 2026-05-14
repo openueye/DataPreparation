@@ -21,6 +21,7 @@ def run(argv: List[str]) -> int:
     parser.add_argument("--scene", default=None, help="Scene name used for the default 04_ProcessedData/slam_compat output.")
     parser.add_argument("--output-dir", type=Path, default=None, help="Explicit COLMAP scene output directory.")
     parser.add_argument("--points-ply", type=Path, default=None, help="Override lidar/global_map_slam_odom.ply.")
+    parser.add_argument("--max-points", type=int, default=3_000_000, help="Maximum point count after voxel downsampling. Use 0 for all.")
     parser.add_argument("--repo-root", type=Path, default=None, help="Optional 00_Baselines repo root.")
     parser.add_argument("--thesis-root", type=Path, default=None, help="Optional explicit Thesis root.")
     parser.add_argument("passthrough", nargs=argparse.REMAINDER, help="Advanced args passed after -- to SLAM backend.")
@@ -37,6 +38,7 @@ def run(argv: List[str]) -> int:
     backend_argv = ["--input-dir", str(input_dir), "--output-dir", str(output_dir)]
     if args.points_ply is not None:
         backend_argv.extend(["--points-ply", str(args.points_ply.expanduser().resolve())])
+    backend_argv.extend(["--max-points", str(args.max_points)])
     invoke_module(
         "data_preparation.slam.export_colmap",
         "slam",
