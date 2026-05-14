@@ -55,9 +55,9 @@ def main(argv: List[str] | None = None) -> int:
     if args.command is None:
         print(
             "Formal routes:\n"
-            "  sfm          Run COLMAP/SfM from an existing images_rectified/ directory.\n"
-            "  hybrid       Keep SfM cameras/poses and replace points3D with aligned SLAM/LiDAR points.\n"
-            "  slam         Convert SLAM poses and a colored SLAM point cloud into a COLMAP text model.\n"
+            "  sfm          Organize a ROS bag and run COLMAP/SfM on rectified images.\n"
+            "  hybrid       Organize a ROS bag, run SfM, and align SLAM/LiDAR points.\n"
+            "  slam         Organize a ROS bag and convert SLAM poses/points to COLMAP text.\n"
             "\nUse: python -m data_preparation <sfm|hybrid|slam> --help"
         )
         print("Remaining legacy/debug commands are hidden from this summary.")

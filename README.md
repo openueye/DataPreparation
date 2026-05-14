@@ -1,78 +1,76 @@
 # data_preparation
 
-`data_preparation` prepares COLMAP-compatible scenes for `3DGS_baseline01`.
-Training, checkpoints, viewers, and model code live in the training repository.
+`data_preparation` builds COLMAP-compatible scene folders for 3DGS training from Odin1 ROS bag directories.
 
-## Formal Routes
+The formal routes expose one data input: `--rosbag-dir`. Each route first organizes the ROS bag into a pure-headerstamp intermediate scene under `Thesis/04_ProcessedData/rosbag_prepared/`, then runs the requested COLMAP export path.
 
-The public data-preparation surface is intentionally limited to three routes:
-
-```text
-sfm     rectified images -> COLMAP SfM scene
-hybrid  SfM cameras/poses + aligned SLAM/LiDAR points -> COLMAP scene
-slam    SLAM poses + SLAM/LiDAR points -> COLMAP text scene
-```
-
-The route entry scripts are collected under route-specific folders:
+## Routes
 
 ```text
-sfm/main.py
-hybrid/main.py
-slam/main.py
+sfm     ROS bag -> rectified images -> COLMAP SfM scene
+hybrid  ROS bag -> SfM cameras/poses + aligned SLAM/LiDAR points
+slam    ROS bag -> SLAM poses + SLAM/LiDAR points -> COLMAP text scene
 ```
 
-Use the top-level command to see only these formal routes:
+Default outputs:
+
+```text
+Thesis/04_ProcessedData/rosbag_prepared/<scene>_pure_headerstamp/
+Thesis/04_ProcessedData/sfm/<scene>/
+Thesis/04_ProcessedData/hybrid_sfm_lidar/<scene>/
+Thesis/04_ProcessedData/slam_compat/<scene>/
+```
+
+Show the route summary:
 
 ```bash
-python -m data_preparation
+conda run -n 3dgs_train python -m data_preparation
 ```
+
+Run these commands from the `3dgs_train` conda environment. Runtime dependencies include `numpy`, `opencv-python`, `Pillow`, and `plyfile`.
 
 ## Usage
 
 ### SFM
 
 ```bash
-python -m data_preparation sfm \
-  --scene Ferrari1 \
-  --image-dir /path/to/Ferrari1_pure_headerstamp/images_rectified \
+conda run -n 3dgs_train python -m data_preparation sfm \
+  --scene Downtown1 \
+  --rosbag-dir /home/haibo/Documents/Thesis/03_Datasets/001_rosbags/Downtown1 \
   -- --camera-model PINHOLE --matcher sequential --sift-gpu
 ```
 
 ### Hybrid
 
+Hybrid internally runs/reuses the SFM route output for the same scene. The exported `sparse/0/points3D.txt` and `sparse/0/points3D.ply` contain the same voxel-downsampled SLAM/LiDAR points.
+
 ```bash
-python -m data_preparation hybrid \
-  --scene Ferrari1 \
-  --scene-dir /path/to/Ferrari1_pure_headerstamp \
-  --sfm-scene-dir /home/haibo/Documents/Thesis/04_ProcessedData/sfm/Ferrari1 \
-  --points-ply /path/to/Ferrari1_pure_headerstamp/lidar/global_map_slam_odom.ply \
+conda run -n 3dgs_train python -m data_preparation hybrid \
+  --scene Downtown1 \
+  --rosbag-dir /home/haibo/Documents/Thesis/03_Datasets/001_rosbags/Downtown1 \
   --max-points 3000000
 ```
 
 ### SLAM
 
+The exported `sparse/0/points3D.txt` and `sparse/0/points3D.ply` contain the same voxel-downsampled SLAM/LiDAR points.
+
 ```bash
-python -m data_preparation slam \
-  --scene Ferrari1 \
-  --input-dir /path/to/Ferrari1_pure_headerstamp \
+conda run -n 3dgs_train python -m data_preparation slam \
+  --scene Downtown1 \
+  --rosbag-dir /home/haibo/Documents/Thesis/03_Datasets/001_rosbags/Downtown1 \
   --max-points 3000000 \
   -- --copy-images
 ```
 
+Use `--max-points 0` to disable point-cloud downsampling.
 
-python -m data_preparation slam \
-  --scene Downtown1 \
-  --rosbag-dir /Thesis/03_Datasets/001_rosbags/Downtown1
-  --max-points 3000000 \
-  --output-dir /path/to/downtown1_3M \
-  -- --copy-images
-  
 ## Training
 
-All three routes write COLMAP-compatible scenes. The trainer consumes them with:
+Pass any route output scene to the trainer:
 
 ```bash
-python train.py \
+conda run -n 3dgs_train python train.py \
   --mode train \
   --data-format colmap \
   --data-dir /path/to/output_scene

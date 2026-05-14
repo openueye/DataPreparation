@@ -84,6 +84,13 @@ class DataPrepLayout:
     def lidar_scene_dir(self, scene: str) -> Path:
         return self.lidar_scenes_root / scene
 
+    @property
+    def rosbag_prepared_root(self) -> Path:
+        return self.processed_root / "rosbag_prepared"
+
+    def rosbag_prepared_scene_dir(self, scene: str) -> Path:
+        return self.rosbag_prepared_root / f"{scene}_pure_headerstamp"
+
     def rectified_lidar_scene_dir(self, scene: str) -> Path:
         return self.lidar_scenes_root / f"{scene}_pinhole_rectified"
 
@@ -124,4 +131,3 @@ class DataPrepLayout:
         raise FileNotFoundError(
             f"Could not infer video for scene '{scene}' under {self.video_root}; pass --video-path."
         )
-
