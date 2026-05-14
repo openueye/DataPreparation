@@ -62,9 +62,11 @@ python -m data_preparation slam \
 
 python -m data_preparation slam \
   --scene Downtown1 \
-  --input-dir /path/to/Downtown1_pure_headerstamp_3M \
+  --rosbag-dir /Thesis/03_Datasets/001_rosbags/Downtown1
   --max-points 3000000 \
+  --output-dir /path/to/downtown1_3M \
   -- --copy-images
+  
 ## Training
 
 All three routes write COLMAP-compatible scenes. The trainer consumes them with:
