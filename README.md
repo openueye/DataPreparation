@@ -61,20 +61,21 @@ The exported `sparse/0/points3D.txt` and `sparse/0/points3D.ply` contain the sam
 python -m data_preparation slam \
   --scene Downtown1 \
   --rosbag-dir /home/haibo/Documents/Thesis/03_Datasets/001_rosbags/Downtown1 \
-  --output-dir /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_3M \
-  --max-points 3000000 \
+  --output-dir /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_1M_new \
+  --max-points 1000000 \
   -- --copy-images
 ```
 
 Use `--max-points 0` to disable point-cloud downsampling.
 
-## Training
-
-Pass any route output scene to the trainer:
+## Depth Prior Projection
 
 ```bash
-conda run -n 3dgs_train python train.py \
-  --mode train \
-  --data-format colmap \
-  --data-dir /path/to/output_scene
+python -m data_preparation.depth_prior.project \
+  --scene-dir /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_3M \
+  --point-cloud /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_3M/global_map_slam_odom.ply \
+  --source-frame colmap \
+  --min-depth 1.0 \
+  --max-depth 50.0 \
+  --overwrite
 ```
