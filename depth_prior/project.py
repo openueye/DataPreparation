@@ -49,6 +49,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     parser.add_argument("--output-depths-dir", type=Path, default=None, help="Output directory. Defaults to <scene-dir>/depths.")
     parser.add_argument("--chunk-size", type=int, default=1_000_000, help="Point projection chunk size.")
+    parser.add_argument("--min-depth", type=float, default=0.0, help="Minimum projected camera z-depth to keep, in meters.")
+    parser.add_argument("--max-depth", type=float, default=0.0, help="Maximum projected camera z-depth to keep, in meters. Use <=0 to disable.")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing .npy depth files.")
     return parser.parse_args(argv)
 
@@ -130,14 +132,25 @@ def intrinsics_to_params(intr) -> Tuple[int, int, float, float, float, float]:
     return width, height, fx, fy, cx, cy
 
 
-def project_depth_for_image(points_world: np.ndarray, extr, intr, *, chunk_size: int) -> Tuple[np.ndarray, Dict[str, object]]:
+def project_depth_for_image(
+    points_world: np.ndarray,
+    extr,
+    intr,
+    *,
+    chunk_size: int,
+    min_depth: float = 0.0,
+    max_depth: float = 0.0,
+) -> Tuple[np.ndarray, Dict[str, object]]:
     width, height, fx, fy, cx, cy = intrinsics_to_params(intr)
     zbuffer = np.full((height, width), np.inf, dtype=np.float32)
     rotation_cw = qvec2rotmat(extr.qvec).astype(np.float64)
     translation_cw = np.asarray(extr.tvec, dtype=np.float64)
     input_points = int(points_world.shape[0])
     front_points = 0
+    depth_range_points = 0
     projected_points = 0
+    min_depth = max(float(min_depth), 0.0)
+    max_depth = float(max_depth)
 
     for start in range(0, input_points, max(1, int(chunk_size))):
         chunk = points_world[start : start + max(1, int(chunk_size))].astype(np.float64, copy=False)
@@ -149,6 +162,14 @@ def project_depth_for_image(points_world: np.ndarray, extr, intr, *, chunk_size:
         points_camera = points_camera[front]
         z = z[front]
         front_points += int(z.shape[0])
+        in_depth_range = z > min_depth
+        if max_depth > 0.0:
+            in_depth_range = in_depth_range & (z <= max_depth)
+        if not np.any(in_depth_range):
+            continue
+        points_camera = points_camera[in_depth_range]
+        z = z[in_depth_range]
+        depth_range_points += int(z.shape[0])
         u = np.rint((fx * points_camera[:, 0]) / z + cx).astype(np.int64)
         v = np.rint((fy * points_camera[:, 1]) / z + cy).astype(np.int64)
         inside = (u >= 0) & (u < width) & (v >= 0) & (v < height)
@@ -169,11 +190,22 @@ def project_depth_for_image(points_world: np.ndarray, extr, intr, *, chunk_size:
         "height": height,
         "input_points": input_points,
         "front_points": front_points,
+        "depth_range_points": depth_range_points,
         "projected_points": projected_points,
         "valid_pixels": valid_count,
         "pixel_count": pixel_count,
         "valid_ratio": float(valid_count / max(pixel_count, 1)),
+        "min_depth_filter": float(min_depth),
+        "max_depth_filter": float(max_depth),
     }
+
+
+def find_duplicate_image_stems(extrinsics) -> Dict[str, list]:
+    stems: Dict[str, list] = {}
+    for image_id in sorted(extrinsics):
+        name = extrinsics[image_id].name
+        stems.setdefault(Path(name).stem, []).append(name)
+    return {stem: names for stem, names in stems.items() if len(names) > 1}
 
 
 def export_depth_priors(args: argparse.Namespace) -> Dict[str, object]:
@@ -188,6 +220,10 @@ def export_depth_priors(args: argparse.Namespace) -> Dict[str, object]:
         raise FileExistsError(f"Depth files already exist under {depths_dir}; pass --overwrite to replace them.")
 
     extrinsics, intrinsics = load_colmap_model(scene_dir)
+    duplicate_stems = find_duplicate_image_stems(extrinsics)
+    if duplicate_stems:
+        examples = ", ".join(f"{stem}: {names}" for stem, names in list(duplicate_stems.items())[:5])
+        raise ValueError(f"Image stems are not unique; depth .npy outputs would overwrite: {examples}")
     points_world, point_meta = load_points(point_cloud)
     source_frame = str(args.source_frame)
     transform_meta = {
@@ -213,10 +249,19 @@ def export_depth_priors(args: argparse.Namespace) -> Dict[str, object]:
     depths_dir.mkdir(parents=True, exist_ok=True)
 
     per_image = []
+    min_depth = float(getattr(args, "min_depth", 0.0) or 0.0)
+    max_depth = float(getattr(args, "max_depth", 0.0) or 0.0)
     for image_id in sorted(extrinsics):
         extr = extrinsics[image_id]
         intr = intrinsics[extr.camera_id]
-        depth, stats = project_depth_for_image(points_world, extr, intr, chunk_size=args.chunk_size)
+        depth, stats = project_depth_for_image(
+            points_world,
+            extr,
+            intr,
+            chunk_size=args.chunk_size,
+            min_depth=min_depth,
+            max_depth=max_depth,
+        )
         np.save(depths_dir / f"{stats['image_stem']}.npy", depth.astype(np.float32, copy=False))
         stats["depth_path"] = str(depths_dir / f"{stats['image_stem']}.npy")
         per_image.append(stats)
@@ -230,6 +275,11 @@ def export_depth_priors(args: argparse.Namespace) -> Dict[str, object]:
         "unit": "meter",
         "z_buffer_rule": "nearest",
         "depth_format": "float32_npy",
+        "depth_filter": {
+            "min_depth": min_depth,
+            "max_depth": max_depth,
+            "max_depth_disabled_when_leq_zero": True,
+        },
         "source_frame": source_frame,
         "transform": transform_meta,
         "num_images": len(per_image),

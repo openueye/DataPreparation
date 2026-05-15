@@ -166,6 +166,74 @@ def filter_pose_rows_by_frame_ids(
     return filtered_rows
 
 
+def pose_motion_delta(
+    previous_world_from_camera: np.ndarray,
+    current_world_from_camera: np.ndarray,
+) -> Tuple[float, float]:
+    translation_delta = float(
+        np.linalg.norm(current_world_from_camera[:3, 3] - previous_world_from_camera[:3, 3])
+    )
+    previous_rotation = project_so3(previous_world_from_camera[:3, :3])
+    current_rotation = project_so3(current_world_from_camera[:3, :3])
+    if np.allclose(previous_rotation, current_rotation, rtol=0.0, atol=1e-12):
+        angle_rad = 0.0
+    else:
+        relative_rotation = previous_rotation.T @ current_rotation
+        cos_angle = float((np.trace(relative_rotation) - 1.0) * 0.5)
+        angle_rad = float(np.arccos(np.clip(cos_angle, -1.0, 1.0)))
+    return translation_delta, float(np.degrees(angle_rad))
+
+
+def filter_consecutive_static_pose_rows(
+    pose_rows: Iterable[Mapping[str, str]],
+    *,
+    min_translation_m: float = 1e-9,
+    min_rotation_deg: float = 1e-6,
+    pose_prefix: Optional[str] = "T_odom_from_camera",
+) -> Tuple[List[Dict[str, str]], Dict[str, Any]]:
+    rows = [dict(row) for row in pose_rows]
+    if not rows:
+        return [], {
+            "input_count": 0,
+            "kept_count": 0,
+            "dropped_count": 0,
+            "drop_policy": "consecutive_static_pose",
+            "min_translation_m": float(min_translation_m),
+            "min_rotation_deg": float(min_rotation_deg),
+            "dropped_frames": [],
+        }
+
+    kept = [rows[0]]
+    dropped: List[Dict[str, Any]] = []
+    previous_pose = matrix_from_pose_row(rows[0], pose_prefix) if pose_prefix else world_from_camera_from_row(rows[0])
+    for row in rows[1:]:
+        current_pose = matrix_from_pose_row(row, pose_prefix) if pose_prefix else world_from_camera_from_row(row)
+        translation_delta, rotation_delta_deg = pose_motion_delta(previous_pose, current_pose)
+        is_static = translation_delta <= float(min_translation_m) and rotation_delta_deg <= float(min_rotation_deg)
+        if is_static:
+            dropped.append(
+                {
+                    "frame_id": row.get("frame_id"),
+                    "translation_delta_m": translation_delta,
+                    "rotation_delta_deg": rotation_delta_deg,
+                }
+            )
+            continue
+        kept.append(row)
+        previous_pose = current_pose
+
+    return kept, {
+        "input_count": len(rows),
+        "kept_count": len(kept),
+        "dropped_count": len(dropped),
+        "drop_policy": "consecutive_static_pose",
+        "min_translation_m": float(min_translation_m),
+        "min_rotation_deg": float(min_rotation_deg),
+        "dropped_frames": dropped[:100],
+        "dropped_frames_truncated": len(dropped) > 100,
+    }
+
+
 def project_so3(rotation: np.ndarray) -> np.ndarray:
     u_mat, _, vt_mat = np.linalg.svd(rotation)
     fixed = u_mat @ vt_mat
@@ -363,6 +431,9 @@ def convert_pure_headerstamp_scene(
     copy_images: bool = False,
     overwrite: bool = False,
     images_subdir: str = "images",
+    drop_static_poses: bool = True,
+    min_pose_translation_m: float = 1e-9,
+    min_pose_rotation_deg: float = 1e-6,
 ) -> Dict[str, object]:
     scene_dir = scene_dir.expanduser().resolve()
     output_dir = output_dir.expanduser().resolve()
@@ -379,7 +450,25 @@ def convert_pure_headerstamp_scene(
     slam_matched_rows = select_reliable_slam_matched_rows(association_rows, slam_manifest_rows)
     slam_frame_ids = [row["frame_id"] for row in slam_matched_rows]
     pose_rows = filter_pose_rows_by_frame_ids(read_csv_rows(source_paths["camera_poses_csv"]), slam_frame_ids)
-    selected_image_names = [f"{frame_id}.jpg" for frame_id in slam_frame_ids]
+    if drop_static_poses:
+        pose_rows, static_pose_filter = filter_consecutive_static_pose_rows(
+            pose_rows,
+            min_translation_m=min_pose_translation_m,
+            min_rotation_deg=min_pose_rotation_deg,
+            pose_prefix="T_odom_from_camera",
+        )
+    else:
+        static_pose_filter = {
+            "input_count": len(pose_rows),
+            "kept_count": len(pose_rows),
+            "dropped_count": 0,
+            "drop_policy": "disabled",
+            "min_translation_m": float(min_pose_translation_m),
+            "min_rotation_deg": float(min_pose_rotation_deg),
+            "dropped_frames": [],
+        }
+    kept_frame_ids = [row["frame_id"] for row in pose_rows]
+    selected_image_names = [f"{frame_id}.jpg" for frame_id in kept_frame_ids]
 
     images_meta = link_or_copy_selected_images(
         source_paths["images_rectified_dir"],
@@ -416,7 +505,7 @@ def convert_pure_headerstamp_scene(
         "colmap_export_dir": str(output_dir),
         "images": images_meta,
         "camera": {"camera_id": 1, "model": "PINHOLE", "width": int(width), "height": int(height)},
-        "poses": {"frame_count": len(image_records)},
+        "poses": {"frame_count": len(image_records), "static_pose_filter": static_pose_filter},
         "points3D": points_meta,
         "slam_matched_frame_count": len(slam_frame_ids),
         "format": "COLMAP-compatible text model",
@@ -462,6 +551,9 @@ def convert_scene(
     allow_pinhole_approximation: bool = False,
     overwrite: bool = False,
     images_subdir: str = "images",
+    drop_static_poses: bool = True,
+    min_pose_translation_m: float = 1e-9,
+    min_pose_rotation_deg: float = 1e-6,
 ) -> Dict[str, object]:
     """Export a pure-headerstamp Odin scene as a COLMAP text model."""
     if (scene_dir / "images_rectified").exists():
@@ -473,6 +565,9 @@ def convert_scene(
             copy_images=copy_images,
             overwrite=overwrite,
             images_subdir=images_subdir,
+            drop_static_poses=drop_static_poses,
+            min_pose_translation_m=min_pose_translation_m,
+            min_pose_rotation_deg=min_pose_rotation_deg,
         )
 
     # Legacy layout fallback retained for older processed scenes.
@@ -504,6 +599,23 @@ def convert_scene(
     write_cameras_text(sparse_dir / "cameras.txt", width=width, height=height, fx=fx, fy=fy, cx=cx, cy=cy)
 
     pose_rows = load_pose_rows_ordered(scene_dir / "poses" / "poses.csv")
+    if drop_static_poses:
+        pose_rows, static_pose_filter = filter_consecutive_static_pose_rows(
+            pose_rows,
+            min_translation_m=min_pose_translation_m,
+            min_rotation_deg=min_pose_rotation_deg,
+            pose_prefix=None,
+        )
+    else:
+        static_pose_filter = {
+            "input_count": len(pose_rows),
+            "kept_count": len(pose_rows),
+            "dropped_count": 0,
+            "drop_policy": "disabled",
+            "min_translation_m": float(min_pose_translation_m),
+            "min_rotation_deg": float(min_pose_rotation_deg),
+            "dropped_frames": [],
+        }
     image_records = build_image_records(pose_rows, images_dir)
     write_images_text(sparse_dir / "images.txt", image_records)
 
@@ -530,6 +642,7 @@ def convert_scene(
         "source_points": int(points_meta["source_points"]),
         "written_points": int(points_meta["written_points"]),
         "num_images": len(image_records),
+        "static_pose_filter": static_pose_filter,
         "copy_images": bool(copy_images),
         "baseline_type": "SLAM-pose/LiDAR-points COLMAP-compatible scene, not a pure RGB-only COLMAP SfM baseline.",
     }

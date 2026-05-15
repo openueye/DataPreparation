@@ -26,6 +26,23 @@ def run(argv: List[str]) -> int:
     parser.add_argument("--prepared-output-dir", type=Path, default=None, help="Optional organized intermediate scene output directory.")
     parser.add_argument("--overwrite-prepared", action="store_true", help="Regenerate the organized intermediate scene.")
     parser.add_argument("--max-points", type=int, default=3_000_000, help="Maximum point count after voxel downsampling. Use 0 for all.")
+    parser.add_argument(
+        "--keep-static-poses",
+        action="store_true",
+        help="Keep consecutive duplicate/near-duplicate pose frames in the COLMAP export.",
+    )
+    parser.add_argument(
+        "--min-pose-translation-m",
+        type=float,
+        default=1e-9,
+        help="Translation threshold for dropping consecutive static poses.",
+    )
+    parser.add_argument(
+        "--min-pose-rotation-deg",
+        type=float,
+        default=1e-6,
+        help="Rotation threshold for dropping consecutive static poses.",
+    )
     parser.add_argument("--repo-root", type=Path, default=None, help="Optional 00_Baselines repo root.")
     parser.add_argument("--thesis-root", type=Path, default=None, help="Optional explicit Thesis root.")
     parser.add_argument("passthrough", nargs=argparse.REMAINDER, help="Advanced args passed after -- to SLAM backend.")
@@ -53,6 +70,10 @@ def run(argv: List[str]) -> int:
     )
     backend_argv = ["--input-dir", str(prepared_dir), "--output-dir", str(output_dir)]
     backend_argv.extend(["--max-points", str(args.max_points)])
+    if args.keep_static_poses:
+        backend_argv.append("--keep-static-poses")
+    backend_argv.extend(["--min-pose-translation-m", str(args.min_pose_translation_m)])
+    backend_argv.extend(["--min-pose-rotation-deg", str(args.min_pose_rotation_deg)])
     invoke_module(
         "data_preparation.slam.export_colmap",
         "slam",
