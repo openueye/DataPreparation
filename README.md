@@ -70,12 +70,18 @@ Use `--max-points 0` to disable point-cloud downsampling.
 
 ## Depth Prior Projection
 
+Depth priors are generated from synchronized raw LiDAR frames. The command
+uses the converted scene's `manifest.json` to find the prepared pure-headerstamp
+scene, then reads `associations/frame_associations.csv`,
+`lidar/raw_frames/*.npz`, and `calib/tf_chain.json`.
+
 ```bash
-python -m data_preparation.depth_prior.project \
+python -m data_preparation depth-prior-project \
   --scene-dir /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_3M \
-  --point-cloud /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_3M/global_map_slam_odom.ply \
-  --source-frame colmap \
   --min-depth 1.0 \
   --max-depth 50.0 \
   --overwrite
 ```
+
+The output format is `depths/<image_stem>.npy` with `float32` metric
+OpenCV/COLMAP z-depth and invalid pixels encoded as `0`.
