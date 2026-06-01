@@ -85,3 +85,15 @@ python -m data_preparation depth-prior-project \
 
 The output format is `depths/<image_stem>.npy` with `float32` metric
 OpenCV/COLMAP z-depth and invalid pixels encoded as `0`.
+
+Calibration note: the finalized raw-frame route projects `/odin1/cloud_raw`
+directly using `T_camera_from_lidar`. The available ROS bags do not contain
+`/tf` or `/tf_static`, and `/odin1/cloud_raw` is recorded with
+`frame_id=odin1_base_link`. Prepared scenes therefore use
+`lidar_frame_assumption=odin1_base_link` and
+`T_base_from_lidar=identity`. This identity base/lidar assumption is supported
+by frame metadata, calibration files, code inspection, multi-frame overlays,
+and numerical sanity checks, but it is not independently confirmed by ROS TF.
+The route is frozen as `freeze except for calibration note`. Existing stale
+global-cloud depth reports must not be used as evidence for the finalized
+raw-frame route.
