@@ -78,6 +78,7 @@ scene, then reads `associations/frame_associations.csv`,
 ```bash
 python -m data_preparation depth-prior-project \
   --scene-dir /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_3M \
+  --method raw-frame \
   --min-depth 1.0 \
   --max-depth 50.0 \
   --overwrite
@@ -85,6 +86,79 @@ python -m data_preparation depth-prior-project \
 
 The output format is `depths/<image_stem>.npy` with `float32` metric
 OpenCV/COLMAP z-depth and invalid pixels encoded as `0`.
+
+`raw-frame` is the default method and is kept as the frozen single raw LiDAR
+frame baseline. It writes only to:
+
+```text
+<scene>/depths/
+<scene>/depth_prior_report.json
+```
+
+### Local Multi-Frame LiDAR Fusion
+
+Use `local-fused` for a pose-compensated local raw LiDAR fusion prior. This
+does not overwrite the raw-frame baseline. The default fusion window is 5
+centered frames; the window must be a positive odd integer.
+
+```bash
+python -m data_preparation depth-prior-project \
+  --scene-dir /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_3M \
+  --prepared-scene-dir /home/haibo/Documents/Thesis/04_ProcessedData/rosbag_prepared/Downtown1_pure_headerstamp \
+  --method local-fused \
+  --fusion-window 5 \
+  --min-depth 1.0 \
+  --max-depth 50.0 \
+  --overwrite
+```
+
+Default local-fused outputs:
+
+```text
+<scene>/depths_lidar_fused_5f/<image_stem>.npy
+<scene>/masks_lidar_fused_5f/<image_stem>.npy
+<scene>/depth_prior_report_local_fused_5f.json
+```
+
+Pass `--write-confidence` to also write:
+
+```text
+<scene>/confidence_lidar_fused_5f/<image_stem>.npy
+```
+
+The local-fused transform is:
+
+```text
+p_target_cam =
+  inverse(T_odom_from_target_cam)
+  @ T_odom_from_source_cam
+  @ T_camera_from_lidar
+  @ p_source_lidar
+```
+
+The route reads `poses/camera_poses.csv`, `calib/tf_chain.json`,
+`calib/camera_rectified.json`, `associations/frame_associations.csv`, and
+`lidar/raw_frames/*.npz`. It writes a quality report with source frame ids,
+source time offsets, input/front/projected point counts, valid pixels, valid
+ratio, depth statistics, z-buffer collisions, conflict/outlier metrics, and
+the fusion time window. It does not generate overlays by default; pass
+`--overlay-count N` for a small number of visual checks under the scene
+directory.
+
+For 02baseline training, keep the depth loss format unchanged and switch depth
+priors only through `--use-depth-prior --depths-dir`:
+
+```bash
+python train.py \
+  --data-dir /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_3M \
+  --use-depth-prior \
+  --depths-dir /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_3M/depths_lidar_fused_5f \
+  --depth-prior-method local-fused \
+  --depth-report-path /home/haibo/Documents/Thesis/04_ProcessedData/slam/downtown1_3M/depth_prior_report_local_fused_5f.json \
+  --iterations 100 \
+  --save-interval 100 \
+  --val-interval 0
+```
 
 Calibration note: the finalized raw-frame route projects `/odin1/cloud_raw`
 directly using `T_camera_from_lidar`. The available ROS bags do not contain
