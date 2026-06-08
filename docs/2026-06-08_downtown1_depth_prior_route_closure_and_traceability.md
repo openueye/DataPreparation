@@ -46,12 +46,13 @@ Downstream 3DGS metrics are recorded only as reference information. They should 
 --depth-confidence-dir
 ```
 
-Current sufficiency judgment: `00_Baselines/data_preparation` is partially sufficient as the canonical owner. It already contains the production raw-frame and local-fused LiDAR projection code, report generation, tests for depth projection behavior, and README usage documentation. It is not yet fully sufficient for the complete D3/D4 route because SPNet completion, edge-mask generation, and confidence/source-label sidecar generation are still represented by external or consumer-side scripts:
+Current sufficiency judgment after the follow-up migration: `00_Baselines/data_preparation` is sufficient as the canonical owner for D1 raw-frame projection, D2 local-fused projection, and D4 post-completion edge-mask / final-depth / confidence-sidecar preparation. SPNet model inference for D3 is still represented by the historical external script because it depends on the Gaussian-LIC SPNet checkout, checkpoint loading, and GPU/CPU model runtime; it remains indexed here as a legacy external generation step until it receives its own tested wrapper.
 
-- SPNet completion and edge-mask scripts: `05_Outputs/depth_prior_experiments/2026-06-06_spnet_fused9_anchor_preserved_1600x1296/`
-- confidence/source-label sidecar generation: `00_Baselines/02baseline/tools/generate_depth_confidence_sidecars.py`
+Canonical post-completion commands now owned by `data_preparation`:
 
-Those files were not moved in this closure pass. They are indexed here as external or legacy locations and should be migrated or wrapped under `data_preparation` in a later minimal change if the route is promoted from documented closure to fully consolidated production tooling.
+- `python -m data_preparation depth-prior-edge-masks`
+- `python -m data_preparation depth-prior-apply-mask`
+- `python -m data_preparation depth-prior-sidecars`
 
 ## 4. Route evolution
 
@@ -114,8 +115,9 @@ Those files were not moved in this closure pass. They are indexed here as extern
 
 - Motivation: keep near-dense coverage while rejecting high-risk edge regions and preventing SPNet-completed pixels from being supervised with the same trust as real LiDAR anchors.
 - Implementation / code location:
-  - edge mask and depth application scripts: external `05_Outputs/depth_prior_experiments/2026-06-06_spnet_fused9_anchor_preserved_1600x1296/generate_edge_gated_masks.py` and `apply_mask_to_depths.py`
-  - confidence/source-label sidecars: `00_Baselines/02baseline/tools/generate_depth_confidence_sidecars.py`
+  - edge mask generation and final masked depth application: `00_Baselines/data_preparation/depth_prior/edge_masks.py`
+  - confidence/source-label sidecars: `00_Baselines/data_preparation/depth_prior/sidecars.py`
+  - CLI dispatch: `python -m data_preparation depth-prior-edge-masks`, `depth-prior-apply-mask`, and `depth-prior-sidecars`
 - Artifact paths:
   - depth: `04_ProcessedData/slam/downtown1_1M/depths_spnet_fused9_anchor_preserved_edge90`
   - mask: `04_ProcessedData/slam/downtown1_1M/masks_spnet_fused9_anchor_preserved_edge90`
@@ -267,10 +269,15 @@ Depth-quality reasons for this recommendation:
 | `00_Baselines/data_preparation/shared/poses.py` | yes | pose transform helpers | `matrix_from_pose_row`, `camera_from_world` | support | keep |
 | `00_Baselines/data_preparation/shared/io.py` | yes | JSON/CSV/image path helpers | `load_json`, `write_json`, `load_csv_rows` | support | keep |
 | `00_Baselines/data_preparation/tests/test_depth_prior_project.py` | yes | projection and report tests | raw-frame and local-fused tests | test | keep |
+| `00_Baselines/data_preparation/depth_prior/edge_masks.py` | yes | edge-mask generation and mask application | `generate_edge_masks`, `apply_depth_mask`, `depth-prior-edge-masks`, `depth-prior-apply-mask` | production post-completion utility | canonical replacement for old experiment scripts |
+| `00_Baselines/data_preparation/depth_prior/sidecars.py` | yes | confidence and source-label sidecar generation | `generate_sidecars`, `depth-prior-sidecars` | production post-completion utility | canonical replacement for old `02baseline/tools` generator |
+| `00_Baselines/data_preparation/tests/test_depth_prior_edge_masks.py` | yes | edge-mask and apply-mask regression tests | small `.npy` fixtures | test | keep |
+| `00_Baselines/data_preparation/tests/test_depth_prior_sidecars.py` | yes | confidence/source-label regression tests | small `.npy` fixtures | test | keep |
+| `00_Baselines/data_preparation/tests/test_cli_depth_prior_commands.py` | yes | CLI command registry test | `DEPTH_PRIOR_COMMANDS` | test | keep |
 | `05_Outputs/depth_prior_experiments/2026-06-06_spnet_fused9_anchor_preserved_1600x1296/generate_spnet_anchor_preserved.py` | no | SPNet completion and anchor preservation | script CLI | experimental / external | migrate or wrap under `data_preparation` later |
-| `05_Outputs/depth_prior_experiments/2026-06-06_spnet_fused9_anchor_preserved_1600x1296/generate_edge_gated_masks.py` | no | edge mask generation | script CLI | experimental / external | migrate or wrap under `data_preparation` later |
-| `05_Outputs/depth_prior_experiments/2026-06-06_spnet_fused9_anchor_preserved_1600x1296/apply_mask_to_depths.py` | no | apply mask to completed depths | script CLI | experimental / external | migrate or wrap under `data_preparation` later |
-| `00_Baselines/02baseline/tools/generate_depth_confidence_sidecars.py` | no | confidence and source-label sidecar generation | script CLI | consumer-side tool but generation-like | migrate or wrap under `data_preparation` later; do not leave as long-term owner |
+| `05_Outputs/depth_prior_experiments/2026-06-06_spnet_fused9_anchor_preserved_1600x1296/generate_edge_gated_masks.py` | no | edge mask generation | script CLI | migrated / obsolete | replaced by `depth-prior-edge-masks`; removed after implementation log |
+| `05_Outputs/depth_prior_experiments/2026-06-06_spnet_fused9_anchor_preserved_1600x1296/apply_mask_to_depths.py` | no | apply mask to completed depths | script CLI | migrated / obsolete | replaced by `depth-prior-apply-mask`; removed after implementation log |
+| `00_Baselines/02baseline/tools/generate_depth_confidence_sidecars.py` | no | confidence and source-label sidecar generation | script CLI | migrated / obsolete | replaced by `depth-prior-sidecars`; removed after implementation log |
 
 Global point-cloud projection code for D0 was not verified as an active `data_preparation` method. Treat the historical 3M report as archived evidence only.
 
@@ -344,7 +351,7 @@ diff --name-only: empty
 - Downstream 3DGS consumption is not yet the main proof of the depth-prior route.
 - Current result is Downtown1 1M specific and should be validated with further depth-quality ablations.
 - Global projection should not be reused as final supervision unless visibility reasoning is added.
-- `data_preparation` still needs future migration or wrapper indexing if SPNet, edge-mask, confidence, and source-label scripts remain external.
+- `data_preparation` still needs a future tested wrapper for SPNet model inference if D3 is to be fully production-owned rather than externally indexed.
 
 ## 14. Next minimal depth-prior ablations
 

@@ -33,6 +33,18 @@ The organizer looks for `cam_in_ex.txt` in the scene bag directory first, then i
 
 ## Usage
 
+Canonical CLI reference:
+
+```text
+docs/CLI.md
+```
+
+Command migration notes:
+
+```text
+docs/migration.md
+```
+
 ### SFM
 
 ```bash
@@ -81,6 +93,14 @@ Detailed closure and traceability report:
 
 ```text
 docs/2026-06-08_downtown1_depth_prior_route_closure_and_traceability.md
+```
+
+Canonical post-completion utilities:
+
+```bash
+python -m data_preparation depth-prior-edge-masks --help
+python -m data_preparation depth-prior-apply-mask --help
+python -m data_preparation depth-prior-sidecars --help
 ```
 
 ## Depth Prior Projection

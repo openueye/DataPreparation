@@ -17,27 +17,38 @@ class Command:
     help: str
 
 
-LEGACY_COMMANDS: Dict[str, Command] = {
-    "rosbag-inspect": Command(
-        "data_preparation.rosbag_to_3dgs.inspect_rosbags_for_3dgs",
-        "Inspect ROS2 bags and write inventory/feasibility reports.",
-    ),
-    "rosbag-extract-images": Command(
-        "data_preparation.rosbag_to_colmap.extract_rosbag_images",
-        "Extract image-only ROS2 bag frames for a pure visual COLMAP SfM baseline.",
+ADAPTER_COMMANDS: Dict[str, Command] = {
+    "lsgslam-export": Command(
+        "data_preparation.slam.lsgslam_adapter",
+        "Export a COLMAP-compatible scene to LSG-SLAM EuRoC-style RGB-D layout.",
     ),
     "video2colmap": Command(
         "data_preparation.video2colmap.preprocess_video_to_colmap",
-        "Extract video frames and run a COLMAP preprocessing pipeline.",
+        "Deprecated direct backend. Prefer the sfm route unless debugging video-only preprocessing.",
     ),
 }
 
 
-COMMANDS: Dict[str, Command] = LEGACY_COMMANDS
+COMMANDS: Dict[str, Command] = ADAPTER_COMMANDS
 DEPTH_PRIOR_COMMAND = Command(
     "data_preparation.depth_prior.project",
     "Generate synchronized raw LiDAR depth priors.",
 )
+DEPTH_PRIOR_COMMANDS: Dict[str, Command] = {
+    "depth-prior-project": DEPTH_PRIOR_COMMAND,
+    "depth-prior-edge-masks": Command(
+        "data_preparation.depth_prior.edge_masks",
+        "Create edge-gated masks for completed depth priors.",
+    ),
+    "depth-prior-apply-mask": Command(
+        "data_preparation.depth_prior.edge_masks",
+        "Apply a depth-prior mask by zeroing rejected completed pixels.",
+    ),
+    "depth-prior-sidecars": Command(
+        "data_preparation.depth_prior.sidecars",
+        "Generate confidence and source-label sidecars for completed depth priors.",
+    ),
+}
 
 
 def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
@@ -46,7 +57,7 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
         description="Build COLMAP-compatible scenes through the formal SFM, hybrid, and SLAM routes.",
         epilog=(
             "Formal routes: sfm, hybrid, slam. "
-            "Remaining legacy/debug commands are hidden from the default summary."
+            "Use depth-prior-* commands for depth-prior artifacts and lsgslam-export for LSG-SLAM layout export."
         ),
     )
     parser.add_argument("command", nargs="?", help="Command to run.")
@@ -64,9 +75,17 @@ def main(argv: List[str] | None = None) -> int:
             "  slam         Organize a ROS bag and convert SLAM poses/points to COLMAP text.\n"
             "  depth-prior-project\n"
             "               Generate scene/depths/*.npy metric depth priors.\n"
-            "\nUse: python -m data_preparation <sfm|hybrid|slam|depth-prior-project> --help"
+            "  depth-prior-edge-masks\n"
+            "               Create edge-gated masks for completed depth priors.\n"
+            "  depth-prior-apply-mask\n"
+            "               Apply a depth-prior mask by zeroing rejected pixels.\n"
+            "  depth-prior-sidecars\n"
+            "               Generate confidence/source-label sidecars.\n"
+            "  lsgslam-export\n"
+            "               Export COLMAP scene + depth priors to LSG-SLAM RGB-D layout.\n"
+            "\nUse: python -m data_preparation <command> --help"
         )
-        print("Remaining legacy/debug commands are hidden from this summary.")
+        print("Direct backend command video2colmap is kept for compatibility but is deprecated.")
         return 0
 
     if args.command == "sfm":
@@ -90,16 +109,19 @@ def main(argv: List[str] | None = None) -> int:
             print(f"[ERROR] {exc}", file=sys.stderr)
             return 2
 
-    if args.command == "depth-prior-project":
-        invoke_module(DEPTH_PRIOR_COMMAND.module, args.command, args.args)
+    if args.command in DEPTH_PRIOR_COMMANDS:
+        invoke_module(DEPTH_PRIOR_COMMANDS[args.command].module, args.command, args.args)
         return 0
 
-    if args.command not in LEGACY_COMMANDS:
+    if args.command not in COMMANDS:
         print(f"[ERROR] Unknown command: {args.command}", file=sys.stderr)
-        print("Use: python -m data_preparation <sfm|hybrid|slam|depth-prior-project> --help", file=sys.stderr)
+        print(
+            "Use: python -m data_preparation <sfm|hybrid|slam|depth-prior-project|depth-prior-edge-masks|depth-prior-apply-mask|depth-prior-sidecars|lsgslam-export> --help",
+            file=sys.stderr,
+        )
         return 2
 
-    command = LEGACY_COMMANDS[args.command]
+    command = COMMANDS[args.command]
     invoke_module(command.module, args.command, args.args)
     return 0
 
