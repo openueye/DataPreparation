@@ -24,10 +24,14 @@ Thesis/04_ProcessedData/slam_compat/<scene>/
 Show the route summary:
 
 ```bash
+cd /home/haibo/Documents/Thesis/00_Baselines
 conda run -n 3dgs_train python -m data_preparation
 ```
 
-Run these commands from the `3dgs_train` conda environment. Runtime dependencies include `numpy`, `opencv-python`, `Pillow`, and `plyfile`.
+Run these commands from the `3dgs_train` conda environment and from the
+`00_Baselines` parent directory, or install/add `data_preparation` to
+`PYTHONPATH`. Runtime dependencies include `numpy`, `opencv-python`, `Pillow`,
+and `plyfile`.
 
 The organizer looks for `cam_in_ex.txt` in the scene bag directory first, then in the parent `001_rosbags/` directory.
 
