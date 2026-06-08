@@ -68,6 +68,21 @@ python -m data_preparation slam \
 
 Use `--max-points 0` to disable point-cloud downsampling.
 
+## Downtown1 depth-prior route
+
+`data_preparation` is the canonical owner for Downtown1 depth-map generation
+and depth-prior artifact traceability. The route includes raw-frame LiDAR
+projection, local-fused LiDAR projection, SPNet completion, edge90 masking, and
+confidence/source-label sidecars. `00_Baselines/02baseline` should only consume
+prepared artifacts through `--depths-dir`, `--depth-masks-dir`, and
+`--depth-confidence-dir`.
+
+Detailed closure and traceability report:
+
+```text
+docs/2026-06-08_downtown1_depth_prior_route_closure_and_traceability.md
+```
+
 ## Depth Prior Projection
 
 Depth priors are generated from synchronized raw LiDAR frames. The command
