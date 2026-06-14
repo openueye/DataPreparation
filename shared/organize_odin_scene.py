@@ -1195,13 +1195,9 @@ def validate_extrinsic_direction(
 
 
 def build_tf_chain(calibration: CameraCalibration, extrinsic_summary: Dict[str, Any]) -> Dict[str, Any]:
-    selected_direction = extrinsic_summary["selected_direction"]
-    if selected_direction == "camera_from_lidar":
-        t_camera_from_lidar = np.asarray(calibration.t_camera_from_lidar, dtype=np.float64)
-        t_lidar_from_camera = np.linalg.inv(t_camera_from_lidar)
-    else:
-        t_lidar_from_camera = np.asarray(calibration.t_camera_from_lidar, dtype=np.float64)
-        t_camera_from_lidar = np.linalg.inv(t_lidar_from_camera)
+    validation_selected_direction = extrinsic_summary["selected_direction"]
+    t_camera_from_lidar = np.asarray(calibration.t_camera_from_lidar, dtype=np.float64)
+    t_lidar_from_camera = np.linalg.inv(t_camera_from_lidar)
 
     t_imu_from_lidar = OFFICIAL_T_IMU_FROM_LIDAR.copy()
     t_lidar_from_imu = np.linalg.inv(t_imu_from_lidar)
@@ -1214,7 +1210,11 @@ def build_tf_chain(calibration: CameraCalibration, extrinsic_summary: Dict[str, 
         "camera_frame": "camera",
         "lidar_frame_assumption": "odin1_base_link",
         "calibration_matrix_name": calibration.matrix_name,
-        "selected_direction": selected_direction,
+        "selected_direction": "camera_from_lidar",
+        "validation_selected_direction": validation_selected_direction,
+        "production_direction": "camera_from_lidar",
+        "production_transform_source": "calib.yaml:Tcl_0",
+        "debug_inverse_used_for_production": False,
         "T_base_from_lidar": np.eye(4, dtype=np.float64).tolist(),
         "T_imu_from_lidar": t_imu_from_lidar.tolist(),
         "T_lidar_from_imu": t_lidar_from_imu.tolist(),
